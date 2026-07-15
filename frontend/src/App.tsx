@@ -1,121 +1,166 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
+﻿import { useState } from 'react'
+import type { FormEvent } from 'react'
 import './App.css'
 
+type SourceItem = {
+  name: string
+  description: string
+}
+
 function App() {
-  const [count, setCount] = useState(0)
+  const [question, setQuestion] = useState('')
+  const [answer, setAnswer] = useState('')
+  const [error, setError] = useState('')
+  const [isLoading, setIsLoading] = useState(false)
+  const [sources, setSources] = useState<SourceItem[]>([])
+
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+
+    const cleanQuestion = question.trim()
+
+    if (!cleanQuestion) {
+      setError('Vui lòng nhập yêu cầu trước khi gửi.')
+      setAnswer('')
+      setSources([])
+      return
+    }
+
+    setError('')
+    setAnswer('')
+    setSources([])
+    setIsLoading(true)
+
+    // Phản hồi tạm để kiểm tra giao diện.
+    // Sau khi có backend, phần này sẽ được thay bằng lệnh gọi API thật.
+    window.setTimeout(() => {
+      setAnswer(
+        `Hệ thống đã nhận yêu cầu: "${cleanQuestion}". Đây là phản hồi mô phỏng để kiểm tra giao diện của Team IBIB.`,
+      )
+
+      setSources([
+        {
+          name: 'Nguồn dữ liệu mẫu',
+          description: 'Sẽ được thay bằng API hoặc dữ liệu của đề thi.',
+        },
+      ])
+
+      setIsLoading(false)
+    }, 800)
+  }
+
+  const handleReset = () => {
+    setQuestion('')
+    setAnswer('')
+    setError('')
+    setSources([])
+    setIsLoading(false)
+  }
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
+    <div className="app">
+      <header className="topbar">
         <div>
-          <h1>Get started</h1>
+          <p className="team-label">TEAM IBIB</p>
+          <h1>Trợ lý AI</h1>
+        </div>
+
+        <span className="status-badge">
+          <span className="status-dot" />
+          Giao diện thử nghiệm
+        </span>
+      </header>
+
+      <main className="main-content">
+        <section className="intro-card">
+          <p className="section-label">VIETNAM INNOVATION CHALLENGE 2026</p>
+          <h2>Nhập yêu cầu để thử luồng xử lý</h2>
           <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
+            Giao diện này là khung dùng chung. Nội dung, dữ liệu và chức năng
+            sẽ được điều chỉnh sau khi đội nhận đề chính thức.
           </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+        </section>
 
-      <div className="ticks"></div>
+        <section className="workspace">
+          <form className="request-card" onSubmit={handleSubmit}>
+            <label htmlFor="question">Yêu cầu của người dùng</label>
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
+            <textarea
+              id="question"
+              value={question}
+              onChange={(event) => setQuestion(event.target.value)}
+              placeholder="Ví dụ: Hãy phân tích dữ liệu và đề xuất bước xử lý tiếp theo..."
+              rows={6}
+              disabled={isLoading}
+            />
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
+            <div className="button-row">
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={handleReset}
+                disabled={isLoading}
+              >
+                Xóa nội dung
+              </button>
+
+              <button
+                className="primary-button"
+                type="submit"
+                disabled={isLoading}
+              >
+                {isLoading ? 'Đang xử lý...' : 'Gửi yêu cầu'}
+              </button>
+            </div>
+
+            {error && <p className="error-message">{error}</p>}
+          </form>
+
+          <section className="result-card" aria-live="polite">
+            <div className="result-heading">
+              <div>
+                <p className="section-label">KẾT QUẢ</p>
+                <h2>Phản hồi của hệ thống</h2>
+              </div>
+            </div>
+
+            {!answer && !isLoading && (
+              <div className="empty-state">
+                Kết quả sẽ xuất hiện tại đây sau khi gửi yêu cầu.
+              </div>
+            )}
+
+            {isLoading && (
+              <div className="loading-state">
+                <span className="spinner" />
+                Hệ thống đang xử lý yêu cầu...
+              </div>
+            )}
+
+            {answer && (
+              <>
+                <div className="answer-box">{answer}</div>
+
+                <div className="sources">
+                  <h3>Nguồn tham khảo</h3>
+
+                  {sources.map((source) => (
+                    <article className="source-item" key={source.name}>
+                      <strong>{source.name}</strong>
+                      <span>{source.description}</span>
+                    </article>
+                  ))}
+                </div>
+              </>
+            )}
+          </section>
+        </section>
+      </main>
+
+      <footer>
+        Team IBIB · Vietnam Innovation Challenge 2026
+      </footer>
+    </div>
   )
 }
 
