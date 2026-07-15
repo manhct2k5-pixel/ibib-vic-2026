@@ -1,11 +1,10 @@
 ﻿import { useState } from 'react'
 import type { FormEvent } from 'react'
+import {
+  sendChatRequest,
+  type SourceItem,
+} from './services/chatApi'
 import './App.css'
-
-type SourceItem = {
-  name: string
-  description: string
-}
 
 function App() {
   const [question, setQuestion] = useState('')
@@ -14,7 +13,9 @@ function App() {
   const [isLoading, setIsLoading] = useState(false)
   const [sources, setSources] = useState<SourceItem[]>([])
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (
+    event: FormEvent<HTMLFormElement>,
+  ) => {
     event.preventDefault()
 
     const cleanQuestion = question.trim()
@@ -31,22 +32,23 @@ function App() {
     setSources([])
     setIsLoading(true)
 
-    // Phản hồi tạm để kiểm tra giao diện.
-    // Sau khi có backend, phần này sẽ được thay bằng lệnh gọi API thật.
-    window.setTimeout(() => {
-      setAnswer(
-        `Hệ thống đã nhận yêu cầu: "${cleanQuestion}". Đây là phản hồi mô phỏng để kiểm tra giao diện của Team IBIB.`,
-      )
+    try {
+      const response = await sendChatRequest(cleanQuestion)
 
-      setSources([
-        {
-          name: 'Nguồn dữ liệu mẫu',
-          description: 'Sẽ được thay bằng API hoặc dữ liệu của đề thi.',
-        },
-      ])
+      setAnswer(response.answer)
+      setSources(response.sources)
+    } catch (requestError: unknown) {
+      const message =
+        requestError instanceof Error
+          ? requestError.message
+          : 'Đã xảy ra lỗi không xác định.'
 
+      setError(message)
+      setAnswer('')
+      setSources([])
+    } finally {
       setIsLoading(false)
-    }, 800)
+    }
   }
 
   const handleReset = () => {
@@ -73,8 +75,12 @@ function App() {
 
       <main className="main-content">
         <section className="intro-card">
-          <p className="section-label">VIETNAM INNOVATION CHALLENGE 2026</p>
+          <p className="section-label">
+            VIETNAM INNOVATION CHALLENGE 2026
+          </p>
+
           <h2>Nhập yêu cầu để thử luồng xử lý</h2>
+
           <p>
             Giao diện này là khung dùng chung. Nội dung, dữ liệu và chức năng
             sẽ được điều chỉnh sau khi đội nhận đề chính thức.
@@ -83,7 +89,9 @@ function App() {
 
         <section className="workspace">
           <form className="request-card" onSubmit={handleSubmit}>
-            <label htmlFor="question">Yêu cầu của người dùng</label>
+            <label htmlFor="question">
+              Yêu cầu của người dùng
+            </label>
 
             <textarea
               id="question"
@@ -113,15 +121,17 @@ function App() {
               </button>
             </div>
 
-            {error && <p className="error-message">{error}</p>}
+            {error && (
+              <p className="error-message">
+                {error}
+              </p>
+            )}
           </form>
 
           <section className="result-card" aria-live="polite">
             <div className="result-heading">
-              <div>
-                <p className="section-label">KẾT QUẢ</p>
-                <h2>Phản hồi của hệ thống</h2>
-              </div>
+              <p className="section-label">KẾT QUẢ</p>
+              <h2>Phản hồi của hệ thống</h2>
             </div>
 
             {!answer && !isLoading && (
@@ -139,18 +149,25 @@ function App() {
 
             {answer && (
               <>
-                <div className="answer-box">{answer}</div>
-
-                <div className="sources">
-                  <h3>Nguồn tham khảo</h3>
-
-                  {sources.map((source) => (
-                    <article className="source-item" key={source.name}>
-                      <strong>{source.name}</strong>
-                      <span>{source.description}</span>
-                    </article>
-                  ))}
+                <div className="answer-box">
+                  {answer}
                 </div>
+
+                {sources.length > 0 && (
+                  <div className="sources">
+                    <h3>Nguồn tham khảo</h3>
+
+                    {sources.map((source, index) => (
+                      <article
+                        className="source-item"
+                        key={`${source.name}-${index}`}
+                      >
+                        <strong>{source.name}</strong>
+                        <span>{source.description}</span>
+                      </article>
+                    ))}
+                  </div>
+                )}
               </>
             )}
           </section>
