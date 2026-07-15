@@ -1,0 +1,28 @@
+﻿# API keys và biến môi trường
+.env
+.env.*
+!.env.example
+
+# Frontend
+node_modules/
+dist/
+build/
+.next/
+
+# Backend Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# File hệ thống
+.DS_Store
+Thumbs.db
+
+# File tạm
+*.log
+*.tmp
+
+# Dữ liệu không được công khai
+data/private/
+secrets/
