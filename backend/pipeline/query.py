@@ -16,8 +16,17 @@ from .retrieve import retrieve
 
 
 def gather_candidates(
-    repo: Repository, question: str, as_of: date, scope: str = "all"
+    repo: Repository,
+    question: str,
+    as_of: date,
+    scope: str = "all",
+    mode: str = "system",
 ) -> list[Clause]:
+    # Baseline (RAG thường, AD-3): CÙNG pipeline nhưng TẮT stage temporal + expand.
+    # retrieve không lọc hiệu lực → thấy cả bản cũ; không kéo dẫn chiếu.
+    if mode == "baseline":
+        return retrieve(repo, question, as_of, scope, apply_temporal=False)
+
     found = retrieve(repo, question, as_of, scope)
     referenced = expand(repo, found, scope)
 

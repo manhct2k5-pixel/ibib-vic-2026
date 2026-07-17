@@ -494,6 +494,93 @@ body {
   font-weight: 600;
 }
 
+/* Benchmark 2 cột */
+.benchmark-panel {
+  margin-top: 16px;
+}
+.bench-head h2 {
+  font-size: 15px;
+  margin: 0 0 4px;
+}
+.bench-note {
+  color: var(--muted);
+  font-size: 13px;
+  margin: 0 0 12px;
+}
+.bench-form {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.bench-form input {
+  flex: 1;
+  font: inherit;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+}
+.bench-form input:focus {
+  outline: 0;
+  border-color: var(--brand-red);
+  box-shadow: 0 0 0 3px rgba(216, 30, 40, 0.15);
+}
+.bench-samples {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.bench-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.bench-col {
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 14px;
+  background: var(--surface);
+}
+.bench-col-head {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 8px;
+  margin-bottom: 10px;
+}
+.bench-col-head h3 {
+  margin: 0;
+  font-size: 14px;
+}
+.bench-col-head small {
+  color: var(--muted);
+  font-size: 12px;
+}
+.bench-baseline .bench-col-head h3 {
+  color: var(--muted);
+}
+.bench-system .bench-col-head h3 {
+  color: var(--brand-red);
+}
+.bench-col .answer-box {
+  font-size: 13px;
+  margin-bottom: 10px;
+}
+.bench-col .sources h4 {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 0 0 6px;
+}
+/* Nguồn chỉ có ở một cột = chỗ khác biệt giữa 2 hệ thống */
+.bench-diff {
+  outline: 2px solid var(--conflict);
+  outline-offset: 1px;
+  border-radius: var(--r-md);
+}
+@media (max-width: 720px) {
+  .bench-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 footer {
   margin-top: 28px;
   color: var(--muted);

@@ -94,11 +94,19 @@ class StubRepository:
         return self._clauses[0]
 
     # --- interface Repository (AD-12) ---
-    def search(self, q: str, as_of: date, scope: str = "all") -> list[Clause]:
+    def search(
+        self,
+        q: str,
+        as_of: date,
+        scope: str = "all",
+        apply_temporal: bool = True,
+    ) -> list[Clause]:
         terms = [t for t in _norm(q).split() if t]
         scored: list[tuple[int, Clause]] = []
         for c in self._clauses:
-            if not is_active(c, as_of):
+            # apply_temporal=False → baseline (RAG thường): KHÔNG lọc hiệu lực
+            # nên thấy cả bản đã hết hiệu lực. Vẫn giữ lọc visibility (AD-11).
+            if apply_temporal and not is_active(c, as_of):
                 continue
             if scope == "public" and c.visibility != "public":
                 continue

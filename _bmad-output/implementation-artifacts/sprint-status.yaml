@@ -45,14 +45,14 @@ development_status:
   2-3-bam-nguon-highlight-node: backlog
   epic-2-retrospective: optional
 
-  epic-3: in-progress
-  3-1-rule-phat-hien-xung-dot: review
-  3-2-banner-canh-bao-xung-dot: review
+  epic-3: done
+  3-1-rule-phat-hien-xung-dot: done
+  3-2-banner-canh-bao-xung-dot: done
   epic-3-retrospective: optional
 
-  epic-4: backlog
-  4-1-che-do-baseline: backlog
-  4-2-man-benchmark-2-cot: backlog
+  epic-4: done
+  4-1-che-do-baseline: done
+  4-2-man-benchmark-2-cot: done
   epic-4-retrospective: optional
 
   epic-5: backlog

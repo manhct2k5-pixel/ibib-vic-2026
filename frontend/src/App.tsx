@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { sendChatRequest, type SourceItem } from './services/chatApi'
 import SourceCard from './components/SourceCard'
 import GraphPanel from './components/GraphPanel'
+import BenchmarkPanel from './components/BenchmarkPanel'
 import './App.css'
 
 const _now = new Date()
@@ -28,7 +29,7 @@ function App() {
   const [isLoading, setIsLoading] = useState(false)
   const [asOf, setAsOf] = useState(TODAY)
   const [audience, setAudience] = useState<'employee' | 'customer'>('employee')
-  const [tab, setTab] = useState<'chat' | 'graph'>('chat')
+  const [tab, setTab] = useState<'chat' | 'graph' | 'benchmark'>('chat')
   const [showConflictDetail, setShowConflictDetail] = useState(false)
   // Chỉ chấp nhận response của request MỚI NHẤT (chống race khi đổi asOf/audience nhanh)
   const requestId = useRef(0)
@@ -163,9 +164,19 @@ function App() {
         >
           Đồ thị tri thức
         </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'benchmark'}
+          className={tab === 'benchmark' ? 'on' : ''}
+          onClick={() => setTab('benchmark')}
+        >
+          Benchmark
+        </button>
       </nav>
 
       {tab === 'graph' && <GraphPanel audience={audience} />}
+      {tab === 'benchmark' && <BenchmarkPanel />}
 
       {tab === 'chat' && (
       <main className="chat">

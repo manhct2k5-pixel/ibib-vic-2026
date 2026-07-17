@@ -18,10 +18,17 @@ class Repository(Protocol):
         """Số điều khoản đang có (dùng cho /health)."""
         ...
 
-    def search(self, q: str, as_of: date, scope: str = "all") -> list[Clause]:
+    def search(
+        self,
+        q: str,
+        as_of: date,
+        scope: str = "all",
+        apply_temporal: bool = True,
+    ) -> list[Clause]:
         """Tìm điều khoản khớp `q`, CÒN HIỆU LỰC tại `as_of` (AD-5).
         scope='public' → chỉ trả clause `visibility='public'` (AD-11);
-        scope='all' → mọi visibility. Kết quả sắp theo độ liên quan giảm dần."""
+        scope='all' → mọi visibility. Kết quả sắp theo độ liên quan giảm dần.
+        apply_temporal=False → baseline: bỏ lọc hiệu lực (thấy cả bản hết hạn)."""
         ...
 
     def expand_references(

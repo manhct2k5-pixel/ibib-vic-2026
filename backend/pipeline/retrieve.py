@@ -13,6 +13,10 @@ from kb.repository_protocol import Repository
 
 
 def retrieve(
-    repo: Repository, question: str, as_of: date, scope: str = "all"
+    repo: Repository,
+    question: str,
+    as_of: date,
+    scope: str = "all",
+    apply_temporal: bool = True,
 ) -> list[Clause]:
-    return repo.search(question, as_of, scope)
+    return repo.search(question, as_of, scope, apply_temporal)

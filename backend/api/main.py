@@ -19,7 +19,7 @@ from pydantic import BaseModel
 
 from kb.factory import get_repository
 from kb.repository_protocol import Repository
-from pipeline.annotate import annotate
+from pipeline.annotate import CandidateView, annotate
 from pipeline.conflict_check import check_conflicts
 from pipeline.query import gather_candidates
 from pipeline.synthesize import synthesize
@@ -98,7 +98,9 @@ def create_app(corpus_path: str | None = None) -> FastAPI:
         # Fail-closed: CHỈ 'employee' chính xác mới thấy nội bộ; mọi giá trị
         # khác (sai chính tả, lạ, None) → chỉ dữ liệu công khai (AD-11).
         scope = "all" if req.audience == "employee" else "public"
-        clauses = gather_candidates(repo, req.question, as_of, scope)
+        # Baseline (RAG thường) vs system: benchmark dùng chung pipeline (AD-3).
+        is_baseline = req.mode == "baseline"
+        clauses = gather_candidates(repo, req.question, as_of, scope, req.mode or "system")
 
         if not clauses:
             return ChatResponse(
@@ -107,7 +109,15 @@ def create_app(corpus_path: str | None = None) -> FastAPI:
                 conflictWarning=None,
             )
 
-        views = annotate(repo, clauses, as_of, scope)
+        # Baseline KHÔNG có trí tuệ temporal: view thô (không đánh dấu thay thế),
+        # không conflict — để lộ trung thực điểm yếu RAG thường (NFR-6).
+        if is_baseline:
+            views = [
+                CandidateView(clause=c, is_current=True, superseded_by=None)
+                for c in clauses
+            ]
+        else:
+            views = annotate(repo, clauses, as_of, scope)
 
         # answer = LLM tổng hợp từ các điều khoản đã annotate (AD-7).
         # LLM thật lỗi/timeout → rơi về MockLLM để demo không sập (NFR-3, AD-9, P1).
@@ -118,7 +128,10 @@ def create_app(corpus_path: str | None = None) -> FastAPI:
 
         # Stage conflict_check (AD-3): cảnh báo nếu có 2 quy định cùng hiệu lực
         # mâu thuẫn số liệu ở chủ đề candidate (không rò internal khi customer).
-        conflict_warning = check_conflicts(repo, clauses, as_of, scope)
+        # Baseline không có stage này (RAG thường không biết cảnh báo).
+        conflict_warning = (
+            None if is_baseline else check_conflicts(repo, clauses, as_of, scope)
+        )
 
         sources = [
             Source(
