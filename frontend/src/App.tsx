@@ -1,182 +1,234 @@
-﻿import { useState } from 'react'
-import type { FormEvent } from 'react'
-import {
-  sendChatRequest,
-  type SourceItem,
-} from './services/chatApi'
+import { useRef, useState } from 'react'
+import { sendChatRequest, type SourceItem } from './services/chatApi'
+import SourceCard from './components/SourceCard'
 import './App.css'
+
+const _now = new Date()
+const _pad = (n: number) => String(n).padStart(2, '0')
+// Ngày địa phương (không dùng UTC để tránh lệch ngày ở VN buổi tối)
+const TODAY = `${_now.getFullYear()}-${_pad(_now.getMonth() + 1)}-${_pad(
+  _now.getDate(),
+)}`
+const IS_MOCK = (import.meta.env.VITE_API_MODE ?? 'mock') === 'mock'
+
+const SAMPLES = [
+  'Tỷ lệ an toàn vốn tối thiểu hiện nay là bao nhiêu?',
+  'Quy định về tỷ lệ an toàn vốn năm 2019 là gì?',
+  '(Khách hàng) Chính sách công khai về an toàn vốn?',
+]
 
 function App() {
   const [question, setQuestion] = useState('')
+  const [lastQuestion, setLastQuestion] = useState('')
   const [answer, setAnswer] = useState('')
+  const [sources, setSources] = useState<SourceItem[]>([])
+  const [conflictWarning, setConflictWarning] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [isLoading, setIsLoading] = useState(false)
-  const [sources, setSources] = useState<SourceItem[]>([])
+  const [asOf, setAsOf] = useState(TODAY)
+  const [audience, setAudience] = useState<'employee' | 'customer'>('employee')
+  // Chỉ chấp nhận response của request MỚI NHẤT (chống race khi đổi asOf/audience nhanh)
+  const requestId = useRef(0)
 
-  const handleSubmit = async (
-    event: FormEvent<HTMLFormElement>,
+  const runQuery = async (
+    q: string,
+    when: string,
+    who: 'employee' | 'customer',
   ) => {
-    event.preventDefault()
-
-    const cleanQuestion = question.trim()
-
-    if (!cleanQuestion) {
-      setError('Vui lòng nhập yêu cầu trước khi gửi.')
-      setAnswer('')
-      setSources([])
+    const clean = q.trim()
+    if (!clean) {
+      setError('Vui lòng nhập câu hỏi.')
       return
     }
 
+    const myId = ++requestId.current
     setError('')
     setAnswer('')
     setSources([])
+    setConflictWarning(null)
     setIsLoading(true)
+    setLastQuestion(clean)
 
     try {
-      const response = await sendChatRequest(cleanQuestion)
-
+      const response = await sendChatRequest(clean, {
+        asOf: when || TODAY,
+        audience: who,
+      })
+      if (myId !== requestId.current) return // đã có request mới hơn
       setAnswer(response.answer)
       setSources(response.sources)
+      setConflictWarning(response.conflictWarning ?? null)
     } catch (requestError: unknown) {
-      const message =
+      if (myId !== requestId.current) return
+      setError(
         requestError instanceof Error
           ? requestError.message
-          : 'Đã xảy ra lỗi không xác định.'
-
-      setError(message)
-      setAnswer('')
-      setSources([])
+          : 'Đã xảy ra lỗi không xác định.',
+      )
     } finally {
-      setIsLoading(false)
+      if (myId === requestId.current) setIsLoading(false)
     }
   }
 
-  const handleReset = () => {
+  const handleAsOfChange = (value: string) => {
+    setAsOf(value)
+    if (lastQuestion) void runQuery(lastQuestion, value, audience)
+  }
+
+  const handleAudienceChange = (who: 'employee' | 'customer') => {
+    setAudience(who)
+    if (lastQuestion) void runQuery(lastQuestion, asOf, who)
+  }
+
+  const handleClear = () => {
+    requestId.current += 1 // vô hiệu hóa request đang chạy
     setQuestion('')
+    setLastQuestion('')
     setAnswer('')
-    setError('')
     setSources([])
+    setConflictWarning(null)
+    setError('')
+    setAsOf(TODAY)
+    setAudience('employee')
     setIsLoading(false)
   }
+
+  const hasResult =
+    !!answer || sources.length > 0 || !!conflictWarning?.trim()
 
   return (
     <div className="app">
       <header className="topbar">
-        <div>
-          <p className="team-label">TEAM IBIB</p>
-          <h1>Trợ lý AI</h1>
+        <div className="brand">
+          <span className="mark" />
+          Trợ lý tra cứu văn bản ngân hàng thông minh
+          <small>· SHB</small>
         </div>
-
-        <span className="status-badge">
-          <span className="status-dot" />
-          Giao diện thử nghiệm
-        </span>
+        <div className="spacer" />
+        <div className="mode-toggle" role="group" aria-label="Đối tượng tra cứu">
+          <button
+            type="button"
+            className={audience === 'employee' ? 'on' : ''}
+            disabled={isLoading}
+            onClick={() => handleAudienceChange('employee')}
+          >
+            Nhân viên
+          </button>
+          <button
+            type="button"
+            className={audience === 'customer' ? 'on' : ''}
+            disabled={isLoading}
+            onClick={() => handleAudienceChange('customer')}
+          >
+            Khách hàng
+          </button>
+        </div>
+        {audience === 'customer' && (
+          <span className="public-tag">Chế độ công khai</span>
+        )}
+        <label className="asof" htmlFor="asof">
+          Mốc hiệu lực
+          <input
+            id="asof"
+            type="date"
+            value={asOf}
+            disabled={isLoading}
+            onChange={(event) => handleAsOfChange(event.target.value)}
+          />
+        </label>
+        {IS_MOCK && <span className="mock-tag">Chế độ mock</span>}
       </header>
 
-      <main className="main-content">
-        <section className="intro-card">
-          <p className="section-label">
-            VIETNAM INNOVATION CHALLENGE 2026
-          </p>
-
-          <h2>Nhập yêu cầu để thử luồng xử lý</h2>
-
-          <p>
-            Giao diện này là khung dùng chung. Nội dung, dữ liệu và chức năng
-            sẽ được điều chỉnh sau khi đội nhận đề chính thức.
-          </p>
-        </section>
-
-        <section className="workspace">
-          <form className="request-card" onSubmit={handleSubmit}>
-            <label htmlFor="question">
-              Yêu cầu của người dùng
-            </label>
-
-            <textarea
-              id="question"
-              value={question}
-              onChange={(event) => setQuestion(event.target.value)}
-              placeholder="Ví dụ: Hãy phân tích dữ liệu và đề xuất bước xử lý tiếp theo..."
-              rows={6}
+      <main className="chat">
+        <form
+          className="request-card"
+          onSubmit={(event) => {
+            event.preventDefault()
+            void runQuery(question, asOf, audience)
+          }}
+        >
+          <label htmlFor="question">Câu hỏi về quy định</label>
+          <textarea
+            id="question"
+            value={question}
+            onChange={(event) => setQuestion(event.target.value)}
+            placeholder="Ví dụ: Tỷ lệ an toàn vốn tối thiểu hiện nay?"
+            rows={3}
+            disabled={isLoading}
+          />
+          <div className="button-row">
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={handleClear}
               disabled={isLoading}
-            />
+            >
+              Xóa
+            </button>
+            <button className="primary-button" type="submit" disabled={isLoading}>
+              {isLoading ? 'Đang tra cứu...' : 'Gửi'}
+            </button>
+          </div>
+          {error && <p className="error-message">{error}</p>}
+        </form>
 
-            <div className="button-row">
-              <button
-                className="secondary-button"
-                type="button"
-                onClick={handleReset}
-                disabled={isLoading}
-              >
-                Xóa nội dung
-              </button>
+        <section className="result-card" aria-live="polite">
+          <h2>Kết quả</h2>
 
-              <button
-                className="primary-button"
-                type="submit"
-                disabled={isLoading}
-              >
-                {isLoading ? 'Đang xử lý...' : 'Gửi yêu cầu'}
-              </button>
+          {isLoading && (
+            <div className="loading-state">
+              <span className="spinner" />
+              Đang tra cứu...
             </div>
+          )}
 
-            {error && (
-              <p className="error-message">
-                {error}
-              </p>
-            )}
-          </form>
-
-          <section className="result-card" aria-live="polite">
-            <div className="result-heading">
-              <p className="section-label">KẾT QUẢ</p>
-              <h2>Phản hồi của hệ thống</h2>
+          {!isLoading && !hasResult && (
+            <div className="empty-state">
+              Nhập câu hỏi, hoặc thử một trong các mẫu:
+              <div className="samples">
+                {SAMPLES.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    className="sample-chip"
+                    onClick={() => {
+                      setQuestion(s)
+                      void runQuery(s, asOf, audience)
+                    }}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
             </div>
+          )}
 
-            {!answer && !isLoading && (
-              <div className="empty-state">
-                Kết quả sẽ xuất hiện tại đây sau khi gửi yêu cầu.
-              </div>
-            )}
-
-            {isLoading && (
-              <div className="loading-state">
-                <span className="spinner" />
-                Hệ thống đang xử lý yêu cầu...
-              </div>
-            )}
-
-            {answer && (
-              <>
-                <div className="answer-box">
-                  {answer}
+          {!isLoading && hasResult && (
+            <>
+              {conflictWarning?.trim() && (
+                <div className="conflict-banner">
+                  <span aria-hidden="true">⚠</span>
+                  <span>{conflictWarning}</span>
                 </div>
-
-                {sources.length > 0 && (
-                  <div className="sources">
-                    <h3>Nguồn tham khảo</h3>
-
-                    {sources.map((source, index) => (
-                      <article
-                        className="source-item"
-                        key={`${source.name}-${index}`}
-                      >
-                        <strong>{source.name}</strong>
-                        <span>{source.description}</span>
-                      </article>
-                    ))}
-                  </div>
-                )}
-              </>
-            )}
-          </section>
+              )}
+              {answer && <div className="answer-box">{answer}</div>}
+              {sources.length > 0 && (
+                <div className="sources">
+                  <h3>Nguồn tham khảo</h3>
+                  {sources.map((source, index) => (
+                    <SourceCard
+                      key={`${source.clauseId}-${index}`}
+                      source={source}
+                    />
+                  ))}
+                </div>
+              )}
+            </>
+          )}
         </section>
       </main>
 
-      <footer>
-        Team IBIB · Vietnam Innovation Challenge 2026
-      </footer>
+      <footer>Team IBIB · Vietnam AI Innovation Challenge 2026</footer>
     </div>
   )
 }

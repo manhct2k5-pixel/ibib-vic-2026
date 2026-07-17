@@ -11,6 +11,8 @@ Tài liệu bổ trợ cho `brief.md`. Chứa chi tiết dành cho bước PRD/A
 
 ## Nguyên tắc kỹ thuật cho hackathon 48h
 
+> ⚠️ **CẬP NHẬT (đã đổi):** Lớp dữ liệu chuyển từ **in-memory (NetworkX + rank_bm25 + JSON)** sang **PostgreSQL** (bảng documents/clauses/edges + full-text + thời gian), truy cập qua **tầng repository** (Architecture Spine AD-2/AD-7/AD-12). Database do **Epic 0 (người khác phụ trách)**. Các đoạn nói "NetworkX/BM25/in-memory" bên dưới là **bối cảnh lịch sử** — quyết định hiện hành là Postgres. `corpus.json` vẫn là hạt giống (seed) nạp vào DB.
+
 Bài toán demo là **tiny data**: 5–10 văn bản cắt theo Điều/Khoản ≈ vài trăm chunk. Ở quy mô đó, mọi hạ tầng "for scale" đều là rủi ro tích hợp thừa. Ba quyết định chốt:
 
 - **Không dùng graph DB (Neo4j).** Đề bài tự gợi ý "Neo4j **/ NetworkX**" — chọn NetworkX in-memory, serialize ra JSON `{nodes, edges}`. JSON đó vừa nuôi trực quan đồ thị (react-force-graph), vừa dùng để traverse dẫn chiếu. Một cấu trúc phục vụ cả hai deliverable, không phải học Cypher dưới áp lực.
@@ -66,8 +68,8 @@ _Lưu ý phạm vi giá trị:_ với data bé, differentiation nằm ở **temp
 
 - Backend: **FastAPI** (thư mục `backend/` đang trống) — expose `POST /api/chat` đúng `docs/architecture/API_CONTRACT.md`.
 - Frontend: React starter đã có; bổ sung hiển thị nguồn trích, timeline phiên bản, banner xung đột, đồ thị (react-force-graph / vis-network).
-- Graph: **NetworkX in-memory → JSON** (KHÔNG Neo4j).
-- Vector store: **ChromaDB nhúng hoặc numpy cosine** (KHÔNG Qdrant server).
+- Lớp dữ liệu: **PostgreSQL 17 + psycopg 3** qua `kb/repository.py` (KHÔNG Neo4j/Qdrant/NetworkX). Quan hệ = bảng `edges` + recursive CTE; tìm kiếm = full-text `ts_rank`.
+- Vector store: chưa dùng cho MVP (Deferred).
 - LLM: Claude / GPT-4 qua API (key chỉ ở backend).
 - Admin/ingest: Streamlit.
 
@@ -126,8 +128,8 @@ Sáu deliverable đều bắt buộc nhưng **không cùng độ khó**, nên tr
 - Thời lượng thi: **48 giờ**.
 - Khách hàng (thứ cấp): **có nằm trong bản demo**, giới hạn ở dữ liệu công khai.
 - Con số giá trị kinh doanh: **để định tính**, không nêu số bịa. Giữ số "2–3 giờ/ngày" vì là số của đề bài SHB.
-- Graph: **NetworkX in-memory** (bỏ Neo4j).
-- Vector: **ChromaDB nhúng / numpy** (bỏ Qdrant server).
+- Lớp dữ liệu: **PostgreSQL** (bảng documents/clauses/edges + full-text + thời gian) qua tầng repository — bỏ Neo4j/Qdrant *(và bỏ luôn NetworkX/in-memory ở bản cập nhật)*.
+- Vector: chưa dùng (Postgres full-text cho MVP); dense là Deferred.
 - Trích quan hệ: **hand-annotate JSON** (không auto-extract).
 
 Còn treo (ưu tiên xử lý ngay giờ H0):

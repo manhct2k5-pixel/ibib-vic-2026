@@ -42,6 +42,7 @@ POST {VITE_API_BASE_URL}/api/chat
 |---|---|---|---|
 | `asOf` | string (YYYY-MM-DD) | hôm nay | Mốc thời gian lọc hiệu lực |
 | `mode` | string | `system` | `system` (đầy đủ) hoặc `baseline` (tắt lọc hiệu lực + dẫn chiếu, phục vụ benchmark) |
+| `audience` | string | `employee` | `employee` (thấy cả nội bộ) hoặc `customer` (chỉ dữ liệu công khai) |
 
 ## 3. Response thành công
 

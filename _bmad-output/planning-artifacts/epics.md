@@ -22,7 +22,7 @@ Phân rã yêu cầu từ PRD, UX (DESIGN + EXPERIENCE) và Architecture Spine t
 - **FR-2:** Gắn quan hệ (AMENDS/SUPERSEDES/REFERENCES) + khoảng hiệu lực `[effective_date, expiry_date)` cho từng Clause; serialize đồ thị ra JSON `{documents,clauses,edges}`.
 - **FR-3:** Nạp văn bản mới qua màn admin (đầy đủ: UI ingest; mức co: đọc file JSON sẵn).
 - **FR-4:** Hỏi–đáp tiếng Việt qua `POST /api/chat`; request `{question, asOf?, mode?}`; lỗi trả mã đúng + `detail`; CORS.
-- **FR-5:** Hybrid retrieve (MVP BM25) + expand dẫn chiếu 1–2 hop.
+- **FR-5:** Retrieve (MVP Postgres full-text) + expand dẫn chiếu 1–2 hop.
 - **FR-6:** Trích nguồn tới cấp Điều/Khoản; mọi câu trả lời thành công đều có `sources[].clause_id`.
 - **FR-7:** Chế độ chỉ-dữ-liệu-công-khai cho khách hàng (mọi source đều `public`).
 - **FR-8:** Lọc theo hiệu lực (as-of); mặc định hôm nay; đầy đủ: chọn as-of quá khứ.
@@ -57,13 +57,14 @@ Phân rã yêu cầu từ PRD, UX (DESIGN + EXPERIENCE) và Architecture Spine t
 - **AD-4:** `clause_id` ổn định dạng `"TT41/Điều 6.3"` là khóa mọi nơi.
 - **AD-5:** một hàm `is_active(clause, asOf)`; `eff <= asOf AND (exp IS NULL OR asOf < exp)`.
 - **AD-6:** contract `/api/chat` (request `{question,asOf,mode}`, `sources[]={clause_id,name,description}`, `conflictWarning?`); cập nhật `API_CONTRACT.md` (đã làm).
-- **AD-7:** layering `api→pipeline→kb`; LLM sau provider interface; MVP **BM25-only**, embedding/vector store = Deferred.
+- **AD-7:** layering `api→pipeline→repository→PostgreSQL`; LLM sau provider interface; tìm kiếm bằng Postgres full-text, embedding/vector store = Deferred.
+- **AD-12:** truy cập DB chỉ qua `kb/repository.py`; pipeline/api không viết SQL. Hợp đồng `Clause`/`ConflictPair` dataclass (do Epic 0 giao ra).
 - **AD-8:** secret + gọi model chỉ ở backend; FE chỉ gọi `/api/*`.
 - **AD-9:** logic thật (conflict/radar) tách khỏi tầng fallback canned.
 - **AD-10:** `Candidate.score` chuẩn hóa `[0,1]` (RRF khi thêm dense); ranking một chỗ ở `retrieve`.
 - **AD-11:** lọc `visibility` ngay tại retrieve (chống rò nội bộ).
 - **DEPLOY:** 3 tiến trình cục bộ — Vite:5173, FastAPI:8000, Streamlit:8501; seed corpus lúc startup (fail fast nếu thiếu); fallback demo qua `VITE_API_MODE=mock`.
-- **STACK (pinned 7/2026):** Python 3.12, FastAPI 0.139.2, NetworkX 3.6.1, rank_bm25 0.2.2, httpx 0.28.1, React 19/TS~6/Vite 8, react-force-graph-2d 1.48.2, Streamlit 1.59.2, LLM Claude 4.6.
+- **STACK (pinned 7/2026):** Python 3.12, **PostgreSQL 17 + psycopg 3**, FastAPI 0.139.2, httpx 0.28.1, React 19/TS~6/Vite 8, react-force-graph-2d 1.48.2, Streamlit 1.59.2, LLM Claude 4.6. *(Bỏ NetworkX/rank_bm25 — Postgres lo quan hệ + full-text.)*
 
 ### UX Design Requirements
 
@@ -92,7 +93,7 @@ Phân rã yêu cầu từ PRD, UX (DESIGN + EXPERIENCE) và Architecture Spine t
 - **FR-2** → Epic 1 (gắn quan hệ + hiệu lực; JSON đồ thị)
 - **FR-3** → Epic 1 (mức co: đọc JSON lúc startup) + Epic 5 (UI ingest đầy đủ)
 - **FR-4** → Epic 1 (`/api/chat`)
-- **FR-5** → Epic 1 (hybrid retrieve BM25 + expand dẫn chiếu)
+- **FR-5** → Epic 1 (retrieve Postgres full-text + expand dẫn chiếu)
 - **FR-6** → Epic 1 (trích nguồn tới Điều/Khoản)
 - **FR-7** → Epic 1 (chế độ công khai — lọc visibility)
 - **FR-8** → Epic 1 (lọc as-of)
@@ -109,7 +110,13 @@ Phân rã yêu cầu từ PRD, UX (DESIGN + EXPERIENCE) và Architecture Spine t
 
 > **Thứ tự chạm (lộ trình 48h, khác số thứ tự epic — đồng thuận party):** dựng **lát cắt xuyên** đầu tiên = đường ống xanh (E1 tối thiểu) + **một cặp benchmark** (E4 tối thiểu) để chứng minh khác biệt sớm và làm test tích hợp sống → rồi bơm đầy E1 → E2 → E3 → E5 → E6 (stretch). Story 1.1 khóa **corpus schema + contract** trước khi ai đụng phím; data do 1 người giỏi nghiệp vụ sở hữu từ H0.
 
-### Epic 1: Hỏi–đáp đúng-thời-điểm có trích nguồn *(CORE + nền tảng)*
+> **Phân chia người:** **Epic 0 (Database)** do **một người khác** phụ trách — dựng Postgres + dữ liệu + lớp truy vấn. Phần còn lại (Epic 1–6) do bạn phụ trách, **tiêu thụ interface repository của Epic 0**, không chạm SQL. Ranh giới bàn giao = `backend/kb/repository.py` (xem "Ranh giới bàn giao" cuối phần Epic 0).
+
+### Epic 0: Nền tảng Dữ liệu & Database *(người khác phụ trách — tiên quyết)*
+Cung cấp lớp dữ liệu hoàn chỉnh: PostgreSQL + corpus đã chuẩn hóa + interface truy vấn (`repository.py`), để Epic 1–6 tiêu thụ mà không viết SQL. Logic thời gian/xung đột/tìm kiếm nằm trong lớp này (SQL).
+**FRs covered (phần dữ liệu):** FR-1, FR-2 (chuẩn hóa Điều/Khoản + quan hệ vào DB); hỗ trợ truy vấn cho FR-5, FR-8, FR-9, FR-10, FR-11, FR-12.
+
+### Epic 1: Hỏi–đáp đúng-thời-điểm có trích nguồn *(CORE + nền tảng — phần của bạn)*
 Nhân viên hỏi tiếng Việt và nhận câu trả lời theo **bản còn hiệu lực**, kèm **trích nguồn** tới cấp Điều/Khoản; hỗ trợ chế độ khách hàng (chỉ dữ liệu công khai). Bao gồm nền tảng: dùng lại repo React, dựng skeleton FastAPI, nạp corpus + KnowledgeBase, wire `/api/chat`, fallback demo.
 **FRs covered:** FR-1, FR-2, FR-4, FR-5, FR-6, FR-7, FR-8, FR-9, FR-13 (hiển thị nguồn), FR-3 (mức co: đọc JSON)
 
@@ -135,9 +142,74 @@ Khi nạp văn bản sửa đổi, hệ thống báo cáo điều khoản/văn b
 
 ---
 
-## Epic 1: Hỏi–đáp đúng-thời-điểm có trích nguồn
+## Epic 0: Nền tảng Dữ liệu & Database *(người khác phụ trách)*
 
-Mục tiêu: nhân viên hỏi tiếng Việt và nhận câu trả lời theo bản còn hiệu lực, kèm trích nguồn; hỗ trợ chế độ khách hàng. Gồm nền tảng chạy end-to-end.
+Mục tiêu: giao ra một **lớp dữ liệu chạy được** — Postgres + corpus + `repository.py` — để Epic 1–6 gọi hàm, không viết SQL. Tài sản có sẵn: `backend/db/schema.sql`, `backend/db/docker-compose.yml`, `data/sample/corpus.json` + `corpus.schema.json`.
+
+### Story 0.1: Dựng PostgreSQL + schema
+As a người phụ trách database,
+I want một Postgres chạy được với 3 bảng documents/clauses/edges,
+so that có nơi lưu bền vững cho dữ liệu pháp lý.
+
+**Acceptance Criteria:**
+
+**Given** `backend/db/docker-compose.yml` và `schema.sql`,
+**When** chạy `docker compose up -d`,
+**Then** Postgres 17 lên ở cổng 5432, 3 bảng + index + extension `unaccent` được tạo tự động.
+**And** kết nối được bằng `postgresql://ibib:ibib@localhost:5432/compliance`.
+
+### Story 0.2: Chuẩn bị & mở rộng corpus
+As a người phụ trách database,
+I want corpus đã chuẩn hóa đủ các ca demo,
+so that mọi tính năng phía sau có dữ liệu thật để chạy.
+
+**Acceptance Criteria:**
+
+**Given** `corpus.json` mẫu,
+**When** hoàn thiện dữ liệu,
+**Then** có đủ **3 hạt giống** (bẫy số 8%→9%, thay thế một phần, dẫn chiếu) + **≥1 ca xung đột** + nhãn `public/internal` (FR-1, FR-2).
+**And** file validate hợp lệ với `corpus.schema.json`; nếu dùng dữ liệu dựng thì `_meta.synthetic=true` (NFR-6).
+
+### Story 0.3: Seed loader (corpus.json → Postgres)
+As a người phụ trách database,
+I want một script nạp corpus vào Postgres,
+so that dữ liệu vào DB lặp lại được, không thủ công.
+
+**Acceptance Criteria:**
+
+**Given** Postgres đang chạy và `corpus.json` hợp lệ,
+**When** chạy `python backend/ingest/seed_db.py`,
+**Then** documents/clauses/edges được INSERT đúng; chạy lại **không nhân đôi** (idempotent, upsert theo khóa).
+**And** báo số bản ghi đã nạp; lỗi tham chiếu (edge trỏ clause không tồn tại) → dừng + log rõ.
+
+### Story 0.4: Lớp Repository (interface — RANH GIỚI BÀN GIAO)
+As a người phụ trách database,
+I want một module `repository.py` gói mọi truy vấn SQL sau interface hàm,
+so that phần còn lại của đội gọi hàm mà không cần biết SQL.
+
+**Acceptance Criteria:**
+
+**Given** dữ liệu đã ở Postgres,
+**When** cung cấp `backend/kb/repository.py`,
+**Then** có các hàm (trả về object Python, không phải SQL thô):
+- `search(q: str, as_of: date, mode: str) -> list[Clause]` — full-text + **lọc hiệu lực** + lọc `visibility` nếu mode=public (FR-5, FR-8, FR-9, AD-11)
+- `expand_references(clause_ids) -> list[Clause]` (FR-5)
+- `find_conflicts(as_of) -> list[ConflictPair]` — cùng topic, cùng hiệu lực, khác `metric_value` (FR-11)
+- `version_timeline(clause_id) -> list[Clause]` — chuỗi SUPERSEDES (FR-10)
+- `export_graph() -> dict` — `{nodes, edges}` cho trực quan (FR-12)
+- `insert_document(...)` — cho Admin ingest (FR-3, Epic 5)
+**And** mỗi hàm có docstring + kiểu trả về rõ; có ≥1 test cho `search` (ca 8% bị loại, 9% giữ) và `find_conflicts`.
+**And** `Clause`/`ConflictPair` là dataclass ổn định (khóa `clause_id`) — hợp đồng dữ liệu cho Epic 1+.
+
+### Ranh giới bàn giao (seam) — Epic 0 ↔ phần của bạn
+- **Người DB giao ra:** Postgres chạy + `repository.py` với các hàm trên + `Clause`/`ConflictPair` dataclass.
+- **Bạn nhận vào:** chỉ `import` và gọi hàm `repository`. **Không viết SQL, không truy vấn DB trực tiếp.** Pipeline của bạn (retrieve→expand→temporal→conflict→synthesize) trở thành *điều phối* các hàm repository + gọi LLM.
+- **Chốt sớm hợp đồng:** kiểu `Clause` (các field: `clause_id, doc_code, path, body, effective_date, expiry_date, topic, visibility, metric_value`) phải khóa ở Story 0.4 trước khi bạn code Epic 1 pipeline — để hai phía không lệch.
+- **Bạn KHÔNG bị chặn hoàn toàn:** Story 1.1 (đường ống xanh, contract, FE wire) làm song song với Epic 0 bằng repository **giả (stub)** trả dữ liệu cứng; khi Epic 0.4 xong thì thay stub bằng repository thật.
+
+## Epic 1: Hỏi–đáp đúng-thời-điểm có trích nguồn *(phần của bạn)*
+
+Mục tiêu: nhân viên hỏi tiếng Việt và nhận câu trả lời theo bản còn hiệu lực, kèm trích nguồn; hỗ trợ chế độ khách hàng. Gồm nền tảng chạy end-to-end. **Tiêu thụ `repository` của Epic 0** (không tự dựng KnowledgeBase in-memory nữa).
 
 ### Story 1.1: Đường ống xanh (skeleton + contract + corpus)
 As a lập trình viên trong đội,
@@ -153,18 +225,19 @@ So that cả 6 người có mặt bằng chung để làm song song ngay từ H0
 **And** `data/sample/corpus.schema.json` + `corpus.json` mẫu tồn tại; backend đọc `corpus.json` lúc startup, thiếu file → fail fast với log rõ (AD-1, AD-2).
 **And** key LLM đọc từ `.env` backend, không có key nào ở frontend (AD-8).
 
-### Story 1.2: Nạp corpus vào KnowledgeBase
+### Story 1.2: Kết nối pipeline với Repository (Epic 0)
 As a hệ thống,
-I want dựng KnowledgeBase bất biến (đồ thị + BM25 + hàm `is_active`) từ corpus lúc startup,
-So that mọi stage truy vấn đọc từ một nguồn nhất quán.
+I want pipeline gọi interface `repository` của Epic 0 thay vì tự dựng KnowledgeBase in-memory,
+So that logic dữ liệu (tìm kiếm, hiệu lực, quan hệ, xung đột) dùng một nguồn duy nhất là Postgres.
 
 **Acceptance Criteria:**
 
-**Given** `corpus.json` hợp lệ,
+**Given** `repository.py` của Epic 0 (hoặc stub tạm) sẵn có,
 **When** backend khởi động,
-**Then** dựng NetworkX graph từ `clauses`+`edges` và BM25 index từ `text`, giữ trong `current_kb` bất biến (AD-2, AD-4).
-**And** hàm duy nhất `is_active(clause, asOf)` trả đúng theo `eff <= asOf AND (exp IS NULL OR asOf < exp)` (AD-5) — có unit test cho ca `expiry_date=null` và ca đã hết hạn.
-**And** cắt/nạp theo `clause_id` cấp Điều/Khoản, không cắt token cố định (FR-1, FR-2).
+**Then** tạo một handle repository dùng chung (connection pool), không mở kết nối tùy tiện mỗi request.
+**And** pipeline **chỉ import `repository`**, không import psycopg/SQL trực tiếp (AD-7 layering).
+**And** có **stub repository** (dữ liệu cứng đúng chữ ký hàm) để chạy khi Epic 0 chưa xong; thay bằng repository thật KHÔNG đổi chữ ký (hợp đồng `Clause` khóa ở Story 0.4).
+**And** as-of/visibility là tham số truyền xuống `repository.search(...)`, không xử lý lại ở pipeline (tránh trùng logic với Epic 0).
 
 ### Story 1.3: Hybrid retrieve + expand dẫn chiếu
 As a nhân viên,
@@ -174,7 +247,7 @@ So that câu trả lời không sót ngữ cảnh.
 **Acceptance Criteria:**
 
 **Given** một câu hỏi,
-**When** chạy stage `retrieve` (BM25) rồi `expand`,
+**When** chạy stage `retrieve` (Postgres full-text) rồi `expand`,
 **Then** trả `List[Candidate]` với `score` chuẩn hóa `[0,1]` (AD-10), ranking chỉ ở `retrieve`.
 **And** nếu một Candidate có cạnh `REFERENCES`, điều được dẫn chiếu được kéo vào kết quả (FR-5) — kiểm bằng `TT41/Điều 10` → kéo `TT41/Điều 6.3`.
 
