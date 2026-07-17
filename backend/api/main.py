@@ -20,6 +20,7 @@ from pydantic import BaseModel
 from kb.factory import get_repository
 from kb.repository_protocol import Repository
 from pipeline.annotate import annotate
+from pipeline.conflict_check import check_conflicts
 from pipeline.query import gather_candidates
 from pipeline.synthesize import synthesize
 from providers.llm import MockLLM, get_llm
@@ -73,6 +74,14 @@ def create_app(corpus_path: str | None = None) -> FastAPI:
         repo: Repository = app.state.repo
         return {"status": "ok", "clauses": repo.clause_count()}
 
+    @app.get("/api/graph")
+    def graph(audience: str = "employee") -> dict:
+        # Đồ thị tri thức cho trực quan (FR-12). Suy scope từ audience —
+        # fail-closed như /api/chat: chỉ 'employee' chính xác mới thấy internal.
+        repo: Repository = app.state.repo
+        scope = "all" if audience == "employee" else "public"
+        return repo.export_graph(scope)
+
     @app.post("/api/chat", response_model=ChatResponse)
     def chat(req: ChatRequest) -> ChatResponse:
         repo: Repository = app.state.repo
@@ -107,6 +116,10 @@ def create_app(corpus_path: str | None = None) -> FastAPI:
         except Exception:  # noqa: BLE001 — chủ đích: mọi lỗi LLM đều fallback
             answer = synthesize(MockLLM(), req.question, views)
 
+        # Stage conflict_check (AD-3): cảnh báo nếu có 2 quy định cùng hiệu lực
+        # mâu thuẫn số liệu ở chủ đề candidate (không rò internal khi customer).
+        conflict_warning = check_conflicts(repo, clauses, as_of, scope)
+
         sources = [
             Source(
                 clause_id=v.clause.clause_id,
@@ -117,7 +130,9 @@ def create_app(corpus_path: str | None = None) -> FastAPI:
             )
             for v in views
         ]
-        return ChatResponse(answer=answer, sources=sources, conflictWarning=None)
+        return ChatResponse(
+            answer=answer, sources=sources, conflictWarning=conflict_warning
+        )
 
     return app
 

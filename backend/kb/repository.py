@@ -126,11 +126,14 @@ class StubRepository:
                 out.append(target)
         return out
 
-    def find_conflicts(self, as_of: date) -> list[ConflictPair]:
+    def find_conflicts(self, as_of: date, scope: str = "all") -> list[ConflictPair]:
         candidates = [
             c
             for c in self._clauses
-            if is_active(c, as_of) and c.metric_value is not None
+            if is_active(c, as_of)
+            and c.metric_value is not None
+            # scope='public' → không so clause internal (AD-11, không rò cho khách hàng)
+            and (scope != "public" or c.visibility == "public")
         ]
         pairs: list[ConflictPair] = []
         for i in range(len(candidates)):
@@ -171,7 +174,14 @@ class StubRepository:
         clauses = [self._by_id[cid] for cid in related if cid in self._by_id]
         return sorted(clauses, key=lambda c: c.effective_date)
 
-    def export_graph(self) -> dict:
+    def export_graph(self, scope: str = "all") -> dict:
+        # scope='public' → chỉ node public; edge chạm node internal bị loại (AD-11)
+        visible = [
+            c
+            for c in self._clauses
+            if scope != "public" or c.visibility == "public"
+        ]
+        visible_ids = {c.clause_id for c in visible}
         nodes = [
             {
                 "id": c.clause_id,
@@ -181,11 +191,12 @@ class StubRepository:
                 "visibility": c.visibility,
                 "expiry_date": c.expiry_date.isoformat() if c.expiry_date else None,
             }
-            for c in self._clauses
+            for c in visible
         ]
         edges = [
             {"from": e.get("from"), "to": e.get("to"), "type": e.get("type")}
             for e in self._edges
+            if e.get("from") in visible_ids and e.get("to") in visible_ids
         ]
         return {"nodes": nodes, "edges": edges}
 

@@ -31,16 +31,18 @@ class Repository(Protocol):
         scope='public' → không kéo clause `internal` (AD-11)."""
         ...
 
-    def find_conflicts(self, as_of: date) -> list[ConflictPair]:
-        """Các cặp điều khoản cùng `topic`, cùng còn hiệu lực, khác giá trị số."""
+    def find_conflicts(self, as_of: date, scope: str = "all") -> list[ConflictPair]:
+        """Các cặp điều khoản cùng `topic`, cùng còn hiệu lực, khác giá trị số.
+        scope='public' → không so clause `internal` (AD-11)."""
         ...
 
     def version_timeline(self, clause_id: str) -> list[Clause]:
         """Chuỗi phiên bản (SUPERSEDES) liên quan tới `clause_id`, theo thời gian."""
         ...
 
-    def export_graph(self) -> dict:
-        """Đồ thị `{"nodes": [...], "edges": [...]}` cho trực quan (FR-12)."""
+    def export_graph(self, scope: str = "all") -> dict:
+        """Đồ thị `{"nodes": [...], "edges": [...]}` cho trực quan (FR-12).
+        scope='public' → bỏ node `internal` và mọi edge chạm node internal (AD-11)."""
         ...
 
     def insert_document(

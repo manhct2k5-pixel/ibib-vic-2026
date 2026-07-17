@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { sendChatRequest, type SourceItem } from './services/chatApi'
 import SourceCard from './components/SourceCard'
+import GraphPanel from './components/GraphPanel'
 import './App.css'
 
 const _now = new Date()
@@ -27,6 +28,8 @@ function App() {
   const [isLoading, setIsLoading] = useState(false)
   const [asOf, setAsOf] = useState(TODAY)
   const [audience, setAudience] = useState<'employee' | 'customer'>('employee')
+  const [tab, setTab] = useState<'chat' | 'graph'>('chat')
+  const [showConflictDetail, setShowConflictDetail] = useState(false)
   // Chỉ chấp nhận response của request MỚI NHẤT (chống race khi đổi asOf/audience nhanh)
   const requestId = useRef(0)
 
@@ -46,6 +49,7 @@ function App() {
     setAnswer('')
     setSources([])
     setConflictWarning(null)
+    setShowConflictDetail(false)
     setIsLoading(true)
     setLastQuestion(clean)
 
@@ -87,6 +91,7 @@ function App() {
     setAnswer('')
     setSources([])
     setConflictWarning(null)
+    setShowConflictDetail(false)
     setError('')
     setAsOf(TODAY)
     setAudience('employee')
@@ -139,6 +144,30 @@ function App() {
         {IS_MOCK && <span className="mock-tag">Chế độ mock</span>}
       </header>
 
+      <nav className="tab-bar" role="tablist" aria-label="Chế độ xem">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'chat'}
+          className={tab === 'chat' ? 'on' : ''}
+          onClick={() => setTab('chat')}
+        >
+          Trò chuyện
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'graph'}
+          className={tab === 'graph' ? 'on' : ''}
+          onClick={() => setTab('graph')}
+        >
+          Đồ thị tri thức
+        </button>
+      </nav>
+
+      {tab === 'graph' && <GraphPanel audience={audience} />}
+
+      {tab === 'chat' && (
       <main className="chat">
         <form
           className="request-card"
@@ -208,7 +237,24 @@ function App() {
               {conflictWarning?.trim() && (
                 <div className="conflict-banner">
                   <span aria-hidden="true">⚠</span>
-                  <span>{conflictWarning}</span>
+                  <div className="conflict-body">
+                    <div className="conflict-summary">
+                      <span>
+                        Phát hiện xung đột giữa các quy định cùng hiệu lực.
+                      </span>
+                      <button
+                        type="button"
+                        className="conflict-toggle"
+                        aria-expanded={showConflictDetail}
+                        onClick={() => setShowConflictDetail((v) => !v)}
+                      >
+                        {showConflictDetail ? 'Thu gọn' : 'Xem chi tiết'}
+                      </button>
+                    </div>
+                    {showConflictDetail && (
+                      <p className="conflict-detail">{conflictWarning}</p>
+                    )}
+                  </div>
                 </div>
               )}
               {answer && <div className="answer-box">{answer}</div>}
@@ -227,6 +273,7 @@ function App() {
           )}
         </section>
       </main>
+      )}
 
       <footer>Team IBIB · Vietnam AI Innovation Challenge 2026</footer>
     </div>

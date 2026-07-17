@@ -1,5 +1,5 @@
 # generated: 2026-07-17 17:53
-# last_updated: 2026-07-17 18:05
+# last_updated: 2026-07-18
 # project: ibib-vic-2026
 # project_key: NOKEY
 # tracking_system: file-system
@@ -13,7 +13,7 @@
 # Action Item: open -> in-progress -> done
 
 generated: 2026-07-17 17:53
-last_updated: 2026-07-17 18:05
+last_updated: 2026-07-18
 project: ibib-vic-2026
 project_key: NOKEY
 tracking_system: file-system
@@ -39,15 +39,15 @@ development_status:
   1-7-che-do-khach-hang-cong-khai: done
   epic-1-retrospective: optional
 
-  epic-2: backlog
-  2-1-truc-quan-do-thi-tri-thuc: backlog
+  epic-2: in-progress
+  2-1-truc-quan-do-thi-tri-thuc: review
   2-2-dong-thoi-gian-phien-ban: backlog
   2-3-bam-nguon-highlight-node: backlog
   epic-2-retrospective: optional
 
-  epic-3: backlog
-  3-1-rule-phat-hien-xung-dot: backlog
-  3-2-banner-canh-bao-xung-dot: backlog
+  epic-3: in-progress
+  3-1-rule-phat-hien-xung-dot: review
+  3-2-banner-canh-bao-xung-dot: review
   epic-3-retrospective: optional
 
   epic-4: backlog
