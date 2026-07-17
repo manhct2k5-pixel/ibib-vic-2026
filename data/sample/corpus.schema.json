@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ibib.vic2026/corpus.schema.json",
+  "title": "Compliance Copilot Corpus",
+  "description": "Nguồn sự thật duy nhất cho toàn hệ thống (AD-1). Backend (đồ thị + tìm kiếm) và frontend (trực quan) đều nạp từ file khớp schema này. Mọi edges.from/to là clause_id.",
+  "type": "object",
+  "required": ["documents", "clauses", "edges"],
+  "additionalProperties": false,
+  "properties": {
+    "_meta": {
+      "type": "object",
+      "description": "Ghi chú bộ dữ liệu. NFR-6: nếu là dữ liệu dựng minh họa phải khai báo rõ ở đây.",
+      "properties": {
+        "synthetic": { "type": "boolean", "description": "true = dữ liệu dựng minh họa, không phải trích luật thật" },
+        "note": { "type": "string" }
+      }
+    },
+    "documents": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["doc_code", "title", "type", "issuer", "effective_date", "visibility"],
+        "additionalProperties": false,
+        "properties": {
+          "doc_code": { "type": "string", "description": "Viết tắt ổn định, VD 'TT41'. Dùng làm tiền tố clause_id." },
+          "title": { "type": "string" },
+          "type": { "type": "string", "enum": ["Luật", "NghiDinh", "ThongTu", "Basel", "QuyTrinhNoiBo"] },
+          "issuer": { "type": "string", "description": "VD 'NHNN', 'ChinhPhu', 'SHB'" },
+          "issue_date": { "type": "string", "format": "date" },
+          "effective_date": { "type": "string", "format": "date" },
+          "visibility": { "type": "string", "enum": ["public", "internal"] }
+        }
+      }
+    },
+    "clauses": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["clause_id", "doc_code", "path", "text", "effective_date", "expiry_date", "topic", "visibility"],
+        "additionalProperties": false,
+        "properties": {
+          "clause_id": { "type": "string", "description": "Định danh ổn định dạng '{doc_code}/Điều X[.Y[.Z]]' (AD-4)." },
+          "doc_code": { "type": "string" },
+          "path": { "type": "string", "description": "VD 'Điều 6.3'" },
+          "text": { "type": "string" },
+          "effective_date": { "type": "string", "format": "date" },
+          "expiry_date": {
+            "type": ["string", "null"],
+            "format": "date",
+            "description": "null = còn hiệu lực vô thời hạn (AD-5)."
+          },
+          "topic": { "type": "string", "description": "Khóa chủ đề (snake_case) để so khớp xung đột (AD-11/FR-11), VD 'ty_le_an_toan_von'." },
+          "visibility": { "type": "string", "enum": ["public", "internal"] },
+          "metric": {
+            "type": "object",
+            "description": "Tùy chọn. Chỉ gắn cho điều khoản mang một ngưỡng số, để rule phát hiện xung đột so sánh không cần NLP.",
+            "required": ["value", "unit"],
+            "additionalProperties": false,
+            "properties": {
+              "value": { "type": "number" },
+              "unit": { "type": "string", "description": "VD '%', 'ngày', 'tỷ đồng'" }
+            }
+          }
+        }
+      }
+    },
+    "edges": {
+      "type": "array",
+      "description": "Quan hệ giữa các Điều khoản. Không chứa CONFLICTS_WITH — xung đột do rule tính lúc chạy (AD-9), không gắn cứng.",
+      "items": {
+        "type": "object",
+        "required": ["from", "to", "type"],
+        "additionalProperties": false,
+        "properties": {
+          "from": { "type": "string", "description": "clause_id nguồn" },
+          "to": { "type": "string", "description": "clause_id đích" },
+          "type": { "type": "string", "enum": ["AMENDS", "SUPERSEDES", "REFERENCES", "GUIDES"] },
+          "note": { "type": "string" }
+        }
+      }
+    }
+  }
+}

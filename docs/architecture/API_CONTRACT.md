@@ -24,7 +24,9 @@ POST {VITE_API_BASE_URL}/api/chat
 
 ```json
 {
-  "question": "Nội dung yêu cầu của người dùng"
+  "question": "Nội dung yêu cầu của người dùng",
+  "asOf": "2026-07-17",
+  "mode": "system"
 }
 ```
 
@@ -34,6 +36,13 @@ POST {VITE_API_BASE_URL}/api/chat
 |---|---|---|
 | `question` | string | Nội dung người dùng gửi đến hệ thống |
 
+### Trường tùy chọn
+
+| Trường | Kiểu dữ liệu | Mặc định | Mô tả |
+|---|---|---|---|
+| `asOf` | string (YYYY-MM-DD) | hôm nay | Mốc thời gian lọc hiệu lực |
+| `mode` | string | `system` | `system` (đầy đủ) hoặc `baseline` (tắt lọc hiệu lực + dẫn chiếu, phục vụ benchmark) |
+
 ## 3. Response thành công
 
 ```json
@@ -41,10 +50,12 @@ POST {VITE_API_BASE_URL}/api/chat
   "answer": "Nội dung phản hồi từ hệ thống",
   "sources": [
     {
+      "clause_id": "TT41/Điều 6.3",
       "name": "Tên nguồn",
       "description": "Mô tả ngắn về nguồn"
     }
   ],
+  "conflictWarning": null,
   "requestId": "request-001",
   "latencyMs": 850
 }
@@ -63,10 +74,17 @@ Mỗi phần tử trong `sources` có cấu trúc:
 
 ```json
 {
+  "clause_id": "TT41/Điều 6.3",
   "name": "Tên nguồn",
   "description": "Mô tả nguồn"
 }
 ```
+
+| Trường | Bắt buộc | Kiểu | Mô tả |
+|---|---|---|---|
+| `clause_id` | Có | string | Định danh Điều/Khoản để frontend click-through về nguồn gốc |
+| `name` | Có | string | Tên nguồn |
+| `description` | Không | string | Mô tả ngắn |
 
 ## 4. Response khi có lỗi
 

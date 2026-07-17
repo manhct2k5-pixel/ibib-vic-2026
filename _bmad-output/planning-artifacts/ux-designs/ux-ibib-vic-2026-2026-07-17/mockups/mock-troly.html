@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Compliance Copilot — Trợ lý (mock)</title>
+<style>
+  :root{
+    --brand-red:#D81E28; --brand-red-dark:#B21620; --brand-orange:#F58220;
+    --bg:#F5F7FA; --surface:#FFFFFF; --surface-alt:#F1F5F9; --border:#E2E8F0;
+    --text:#1F2937; --muted:#64748B;
+    --active:#16A34A; --conflict:#D97706; --superseded:#94A3B8; --public:#0EA5E9; --internal:#7C3AED;
+    --mono:"JetBrains Mono",ui-monospace,monospace;
+    --r-sm:6px; --r-md:8px; --r-lg:12px; --pill:999px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:"Be Vietnam Pro",Inter,Arial,sans-serif;background:var(--bg);color:var(--text);font-size:14px}
+  /* top bar */
+  .topbar{display:flex;align-items:center;gap:16px;background:var(--surface);border-bottom:1px solid var(--border);padding:10px 20px}
+  .logo{display:flex;align-items:center;gap:8px;font-weight:700}
+  .logo .mark{width:26px;height:26px;border-radius:var(--r-sm);background:linear-gradient(135deg,var(--brand-red),var(--brand-orange));display:inline-block}
+  .logo small{color:var(--muted);font-weight:500}
+  .spacer{flex:1}
+  .ctrl{display:flex;align-items:center;gap:6px;background:var(--surface-alt);border:1px solid var(--border);border-radius:var(--pill);padding:5px 12px;color:var(--muted)}
+  .toggle{display:flex;border:1px solid var(--border);border-radius:var(--pill);overflow:hidden}
+  .toggle button{border:0;background:var(--surface);padding:6px 14px;cursor:pointer;color:var(--muted)}
+  .toggle button.on{background:var(--brand-red);color:#fff}
+  /* layout */
+  .wrap{display:grid;grid-template-columns:1fr 400px;gap:16px;max-width:1280px;margin:16px auto;padding:0 20px}
+  .col{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);display:flex;flex-direction:column;min-height:640px}
+  .col h2{font-size:14px;margin:0;padding:14px 16px;border-bottom:1px solid var(--border);color:var(--muted);font-weight:600}
+  .chat{flex:1;padding:16px;display:flex;flex-direction:column;gap:14px;overflow:auto}
+  .bubble{max-width:88%;padding:12px 14px;border-radius:var(--r-md);line-height:1.5}
+  .bubble.user{align-self:flex-end;background:var(--surface-alt)}
+  .bubble.bot{align-self:flex-start;background:var(--surface);border:1px solid var(--border)}
+  .banner{display:flex;gap:8px;align-items:flex-start;background:#FEF3E2;border:1px solid var(--conflict);color:#92510a;border-radius:var(--r-md);padding:10px 12px;margin:8px 0;font-size:13px}
+  .sources{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+  .src{border:1px solid var(--border);border-radius:var(--r-md);padding:10px;cursor:pointer;transition:.15s}
+  .src:hover{border-color:var(--brand-red);box-shadow:0 2px 8px rgba(15,23,42,.08)}
+  .src .cid{font-family:var(--mono);font-size:12px;color:var(--brand-red-dark);background:#fdecee;padding:2px 6px;border-radius:var(--r-sm)}
+  .src .doc{font-weight:600;margin:6px 0 2px}
+  .src .desc{color:var(--muted);font-size:12.5px}
+  .badge{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:var(--pill);margin-left:6px}
+  .badge.active{background:#e7f6ec;color:var(--active)}
+  .badge.superseded{background:#eef1f5;color:var(--superseded)}
+  .strike{text-decoration:line-through;color:var(--superseded)}
+  /* input */
+  .inputbar{border-top:1px solid var(--border);padding:12px;display:flex;gap:8px}
+  .inputbar textarea{flex:1;resize:none;border:1px solid var(--border);border-radius:var(--r-md);padding:10px;font:inherit;height:44px}
+  .inputbar textarea:focus{outline:0;border-color:var(--brand-red);box-shadow:0 0 0 3px rgba(216,30,40,.15)}
+  .send{background:var(--brand-red);color:#fff;border:0;border-radius:var(--r-md);padding:0 18px;font-weight:600;cursor:pointer}
+  /* right panel */
+  .tabs{display:flex;gap:4px;padding:10px 12px;border-bottom:1px solid var(--border)}
+  .tabs button{border:0;background:var(--surface-alt);padding:6px 12px;border-radius:var(--pill);cursor:pointer;color:var(--muted)}
+  .tabs button.on{background:var(--brand-orange);color:#fff}
+  .graph{flex:1;position:relative;margin:16px;border:1px dashed var(--border);border-radius:var(--r-md);background:radial-gradient(circle at 50% 40%,#fff,#f8fafc)}
+  .node{position:absolute;transform:translate(-50%,-50%);padding:8px 10px;border-radius:var(--r-md);font-size:12px;font-family:var(--mono);border:2px solid;background:#fff;text-align:center}
+  .node.new{border-color:var(--active);color:var(--active)}
+  .node.old{border-color:var(--superseded);color:var(--superseded)}
+  .edge-label{position:absolute;transform:translate(-50%,-50%);font-size:11px;color:var(--brand-red);background:#fff;padding:1px 6px;border-radius:var(--pill);border:1px solid var(--border)}
+  /* timeline */
+  .timeline{margin:16px;padding-top:6px}
+  .tl-row{display:flex;gap:12px;align-items:flex-start;position:relative;padding:0 0 18px 18px;border-left:2px solid var(--border)}
+  .tl-dot{position:absolute;left:-7px;top:2px;width:12px;height:12px;border-radius:50%;border:2px solid}
+  .tl-dot.new{background:var(--active);border-color:var(--active)}
+  .tl-dot.old{background:#fff;border-color:var(--superseded)}
+  .tl-row .when{font-family:var(--mono);font-size:12px;color:var(--muted)}
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="logo"><span class="mark"></span> Compliance Copilot <small>· SHB</small></div>
+    <div class="spacer"></div>
+    <div class="ctrl">📅 Mốc thời gian: <b style="color:var(--text)">Hôm nay (17/07/2026)</b></div>
+    <div class="toggle"><button class="on">Nhân viên</button><button>Khách hàng</button></div>
+  </div>
+
+  <div class="wrap">
+    <!-- CHAT -->
+    <section class="col">
+      <h2>Trợ lý tra cứu</h2>
+      <div class="chat">
+        <div class="bubble user">Tỷ lệ an toàn vốn tối thiểu hiện nay là bao nhiêu?</div>
+        <div class="bubble bot">
+          <div class="banner">⚠ <div>Điều khoản cũ đã bị thay thế — đang dùng bản mới nhất còn hiệu lực.</div></div>
+          Tỷ lệ an toàn vốn tối thiểu hiện hành là <b>9%</b>, theo <b>Thông tư 22/Điều 1</b> (hiệu lực từ 01/01/2020),
+          thay thế mức <span class="strike">8%</span> tại Thông tư 41/Điều 6.3.
+          <div class="sources">
+            <div class="src">
+              <span class="cid">TT22/Điều 1</span><span class="badge active">Hiệu lực</span>
+              <div class="doc">Thông tư 22/2019/TT-NHNN</div>
+              <div class="desc">Tỷ lệ an toàn vốn tối thiểu 9% — bản đang áp dụng.</div>
+            </div>
+            <div class="src">
+              <span class="cid">TT41/Điều 6.3</span><span class="badge superseded">Đã thay thế</span>
+              <div class="doc">Thông tư 41/2016/TT-NHNN</div>
+              <div class="desc"><span class="strike">Tỷ lệ 8%</span> — đã hết hiệu lực từ 01/01/2020.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="inputbar">
+        <textarea placeholder="Nhập câu hỏi về quy định, ví dụ: Tỷ lệ an toàn vốn tối thiểu hiện nay?"></textarea>
+        <button class="send">Gửi</button>
+      </div>
+    </section>
+
+    <!-- RIGHT PANEL -->
+    <aside class="col">
+      <div class="tabs"><button class="on">Đồ thị tri thức</button><button>Dòng thời gian</button></div>
+      <div class="graph">
+        <div class="node old" style="left:30%;top:35%">TT41/Điều 6.3<br>8%</div>
+        <div class="node new" style="left:70%;top:62%">TT22/Điều 1<br>9%</div>
+        <svg style="position:absolute;inset:0;width:100%;height:100%">
+          <line x1="34%" y1="40%" x2="66%" y2="58%" stroke="#94A3B8" stroke-width="2" stroke-dasharray="5 4"/>
+        </svg>
+        <div class="edge-label" style="left:50%;top:49%">SUPERSEDED_BY</div>
+      </div>
+      <div class="timeline">
+        <div class="tl-row"><span class="tl-dot old"></span><div><div class="when">2016-01-01 → 2020-01-01</div><span class="strike">TT41/Điều 6.3 — CAR 8%</span></div></div>
+        <div class="tl-row" style="border-left-color:transparent"><span class="tl-dot new"></span><div><div class="when">2020-01-01 → nay</div><b>TT22/Điều 1 — CAR 9%</b> <span class="badge active">Hiệu lực</span></div></div>
+      </div>
+    </aside>
+  </div>
+</body>
+</html>

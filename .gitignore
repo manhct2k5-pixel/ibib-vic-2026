@@ -18,6 +18,15 @@ venv/
 # File hệ thống
 .DS_Store
 Thumbs.db
+.agent/
+.claude/
+node_modules/
+.env
+.omc/
+
+# BMad tooling (hạ tầng công cụ, do máy sinh — không commit)
+# Lưu ý: _bmad-output/ được commit để chia sẻ tài liệu planning với team
+_bmad/
 
 # File tạm
 *.log
