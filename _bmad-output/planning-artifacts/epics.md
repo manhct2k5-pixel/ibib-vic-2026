@@ -1,5 +1,5 @@
 ---
-stepsCompleted: [1]
+stepsCompleted: [1, 2, 3, 4]
 inputDocuments:
   - _bmad-output/planning-artifacts/prds/prd-ibib-vic-2026-2026-07-17/prd.md
   - _bmad-output/planning-artifacts/architecture/architecture-ibib-vic-2026-2026-07-17/ARCHITECTURE-SPINE.md
@@ -88,8 +88,277 @@ Phân rã yêu cầu từ PRD, UX (DESIGN + EXPERIENCE) và Architecture Spine t
 
 ### FR Coverage Map
 
-{{requirements_coverage_map}}
+- **FR-1** → Epic 1 (cắt văn bản theo Điều/Khoản)
+- **FR-2** → Epic 1 (gắn quan hệ + hiệu lực; JSON đồ thị)
+- **FR-3** → Epic 1 (mức co: đọc JSON lúc startup) + Epic 5 (UI ingest đầy đủ)
+- **FR-4** → Epic 1 (`/api/chat`)
+- **FR-5** → Epic 1 (hybrid retrieve BM25 + expand dẫn chiếu)
+- **FR-6** → Epic 1 (trích nguồn tới Điều/Khoản)
+- **FR-7** → Epic 1 (chế độ công khai — lọc visibility)
+- **FR-8** → Epic 1 (lọc as-of)
+- **FR-9** → Epic 1 (thay thế một phần)
+- **FR-10** → Epic 2 (dòng thời gian phiên bản)
+- **FR-11** → Epic 3 (phát hiện xung đột)
+- **FR-12** → Epic 2 (trực quan đồ thị)
+- **FR-13** → Epic 1 (hiển thị nguồn) + Epic 2 (bấm nguồn→node) + Epic 3 (banner xung đột)
+- **FR-14** → Epic 4 (benchmark side-by-side)
+- **FR-15** → Epic 4 (đa bằng chứng B/C)
+- **FR-16** → Epic 6 (Radar — stretch)
 
 ## Epic List
 
-{{epics_list}}
+> **Thứ tự chạm (lộ trình 48h, khác số thứ tự epic — đồng thuận party):** dựng **lát cắt xuyên** đầu tiên = đường ống xanh (E1 tối thiểu) + **một cặp benchmark** (E4 tối thiểu) để chứng minh khác biệt sớm và làm test tích hợp sống → rồi bơm đầy E1 → E2 → E3 → E5 → E6 (stretch). Story 1.1 khóa **corpus schema + contract** trước khi ai đụng phím; data do 1 người giỏi nghiệp vụ sở hữu từ H0.
+
+### Epic 1: Hỏi–đáp đúng-thời-điểm có trích nguồn *(CORE + nền tảng)*
+Nhân viên hỏi tiếng Việt và nhận câu trả lời theo **bản còn hiệu lực**, kèm **trích nguồn** tới cấp Điều/Khoản; hỗ trợ chế độ khách hàng (chỉ dữ liệu công khai). Bao gồm nền tảng: dùng lại repo React, dựng skeleton FastAPI, nạp corpus + KnowledgeBase, wire `/api/chat`, fallback demo.
+**FRs covered:** FR-1, FR-2, FR-4, FR-5, FR-6, FR-7, FR-8, FR-9, FR-13 (hiển thị nguồn), FR-3 (mức co: đọc JSON)
+
+### Epic 2: Thấy quan hệ & lịch sử điều khoản
+Người dùng xem **đồ thị tri thức** và **dòng thời gian phiên bản** của một điều khoản; bấm nguồn → highlight node (hai chiều).
+**FRs covered:** FR-10, FR-12, FR-13 (bấm nguồn→node)
+
+### Epic 3: Cảnh báo xung đột
+Người dùng được cảnh báo khi hai quy định cùng hiệu lực mâu thuẫn số liệu (rule quét thật ≥2 ca).
+**FRs covered:** FR-11, FR-13 (banner xung đột)
+
+### Epic 4: Chứng minh hơn RAG thường (Benchmark)
+Đặt hệ thống cạnh RAG baseline trên cùng dữ liệu, **đa bằng chứng** (A/B/C) — màn chốt hạ khi pitch.
+**FRs covered:** FR-14, FR-15
+
+### Epic 5: Quản trị nội dung (Admin/Ingest)
+Admin nạp văn bản mới qua UI mà không cần chạm code; cập nhật đồ thị qua atomic swap.
+**FRs covered:** FR-3 (đầy đủ — UI ingest)
+
+### Epic 6 (STRETCH): Radar Tác động
+Khi nạp văn bản sửa đổi, hệ thống báo cáo điều khoản/văn bản bị ảnh hưởng. Chỉ làm sau khi Epic 1–5 chạy ổn. Phụ thuộc Epic 5 (ingest) + Epic 2 (đồ thị).
+**FRs covered:** FR-16
+
+---
+
+## Epic 1: Hỏi–đáp đúng-thời-điểm có trích nguồn
+
+Mục tiêu: nhân viên hỏi tiếng Việt và nhận câu trả lời theo bản còn hiệu lực, kèm trích nguồn; hỗ trợ chế độ khách hàng. Gồm nền tảng chạy end-to-end.
+
+### Story 1.1: Đường ống xanh (skeleton + contract + corpus)
+As a lập trình viên trong đội,
+I want một đường ống end-to-end (FE → `/api/chat` → BE trả lời giả) cùng corpus schema và contract đã khóa,
+So that cả 6 người có mặt bằng chung để làm song song ngay từ H0.
+
+**Acceptance Criteria:**
+
+**Given** repo React sẵn có và `backend/` trống,
+**When** dựng skeleton FastAPI (`api/pipeline/kb/providers/ingest`) và chạy,
+**Then** `POST /api/chat` trả `{answer, sources[]}` (giả) đúng `API_CONTRACT.md`, có header CORS cho `http://localhost:5173`.
+**And** frontend ở `VITE_API_MODE=real` gọi được và hiển thị câu trả lời giả.
+**And** `data/sample/corpus.schema.json` + `corpus.json` mẫu tồn tại; backend đọc `corpus.json` lúc startup, thiếu file → fail fast với log rõ (AD-1, AD-2).
+**And** key LLM đọc từ `.env` backend, không có key nào ở frontend (AD-8).
+
+### Story 1.2: Nạp corpus vào KnowledgeBase
+As a hệ thống,
+I want dựng KnowledgeBase bất biến (đồ thị + BM25 + hàm `is_active`) từ corpus lúc startup,
+So that mọi stage truy vấn đọc từ một nguồn nhất quán.
+
+**Acceptance Criteria:**
+
+**Given** `corpus.json` hợp lệ,
+**When** backend khởi động,
+**Then** dựng NetworkX graph từ `clauses`+`edges` và BM25 index từ `text`, giữ trong `current_kb` bất biến (AD-2, AD-4).
+**And** hàm duy nhất `is_active(clause, asOf)` trả đúng theo `eff <= asOf AND (exp IS NULL OR asOf < exp)` (AD-5) — có unit test cho ca `expiry_date=null` và ca đã hết hạn.
+**And** cắt/nạp theo `clause_id` cấp Điều/Khoản, không cắt token cố định (FR-1, FR-2).
+
+### Story 1.3: Hybrid retrieve + expand dẫn chiếu
+As a nhân viên,
+I want hệ thống tìm điều khoản liên quan và tự kéo điều được dẫn chiếu,
+So that câu trả lời không sót ngữ cảnh.
+
+**Acceptance Criteria:**
+
+**Given** một câu hỏi,
+**When** chạy stage `retrieve` (BM25) rồi `expand`,
+**Then** trả `List[Candidate]` với `score` chuẩn hóa `[0,1]` (AD-10), ranking chỉ ở `retrieve`.
+**And** nếu một Candidate có cạnh `REFERENCES`, điều được dẫn chiếu được kéo vào kết quả (FR-5) — kiểm bằng `TT41/Điều 10` → kéo `TT41/Điều 6.3`.
+
+### Story 1.4: Lọc as-of + thay thế một phần
+As a cán bộ tuân thủ,
+I want chỉ nhận điều khoản còn hiệu lực tại thời điểm hỏi,
+So that không áp nhầm bản đã hết hiệu lực.
+
+**Acceptance Criteria:**
+
+**Given** kết quả sau retrieve/expand và `asOf` (mặc định hôm nay),
+**When** chạy stage `temporal_filter`,
+**Then** loại mọi Candidate có `is_active=false` (FR-8) — `TT41/Điều 6.3` (8%) bị loại, `TT22/Điều 1` (9%) giữ lại.
+**And** với thay thế một phần, `TT41/Điều 8.2` bị loại còn `TT41/Điều 8.1` giữ lại (FR-9).
+**And** đổi `asOf` về quá khứ (VD 2022-06-01) trả kết quả cũ tương ứng.
+
+### Story 1.5: Tổng hợp câu trả lời + trích nguồn
+As a nhân viên,
+I want câu trả lời tiếng Việt kèm nguồn tới cấp Điều/Khoản,
+So that tôi tin và trích được vào hồ sơ.
+
+**Acceptance Criteria:**
+
+**Given** tập điều khoản sạch sau temporal_filter,
+**When** chạy stage `synthesize` (LLM),
+**Then** trả `{answer}` tiếng Việt và `sources[]={clause_id, name, description}` (FR-4, FR-6).
+**And** không có câu trả lời "thành công" nào thiếu `sources` (NFR-5).
+**And** lời gọi LLM đi qua `providers/llm.py` (interface), có chế độ mock (AD-7, AD-9).
+
+### Story 1.6: Giao diện chat + hiển thị nguồn + AsOfPicker + fallback
+As a nhân viên,
+I want khung chat hiển thị câu trả lời, nguồn bấm được, chọn mốc thời gian, và không trắng màn khi lỗi,
+So that trải nghiệm tra cứu rõ ràng và đáng tin.
+
+**Acceptance Criteria:**
+
+**Given** giao diện Trợ lý (desktop-first 2 cột),
+**When** người dùng gửi câu hỏi,
+**Then** hiện ChatBubble + SourceCard (chip mono `clause_id`, StatusBadge trạng thái) theo token DESIGN.md (UX-DR1,2,3,4,5,15).
+**And** có **AsOfPicker** đổi `asOf` và gửi lại truy vấn (UX-DR10).
+**And** khi API lỗi/timeout 15s → chuyển fallback canned + báo "đang dùng bản đã lưu" (NFR-3, UX-DR12,14).
+**And** trạng thái đã-thay-thế hiển thị gạch ngang + badge, không chỉ bằng màu (UX-DR13).
+
+### Story 1.7: Chế độ khách hàng (công khai)
+As a khách hàng,
+I want tra cứu quy định công khai qua cùng giao diện,
+So that tôi được trả lời mà không chạm dữ liệu nội bộ.
+
+**Acceptance Criteria:**
+
+**Given** **ModeToggle** đặt "Khách hàng",
+**When** gửi câu hỏi,
+**Then** `retrieve` lọc `visibility="public"` ngay từ đầu; `expand` không vượt sang clause `internal` (AD-11, FR-7).
+**And** mọi `sources` trả về đều `public` — `QD-INT/Điều 2` không xuất hiện.
+**And** thanh trên đổi nhãn "Chế độ công khai" (UX-DR10).
+
+## Epic 2: Thấy quan hệ & lịch sử điều khoản
+
+Mục tiêu: xem đồ thị quan hệ và dòng thời gian phiên bản; bấm nguồn highlight node.
+
+### Story 2.1: Trực quan đồ thị tri thức
+As a người dùng,
+I want thấy văn bản và quan hệ dưới dạng đồ thị,
+So that hiểu được cấu trúc sửa đổi/thay thế/dẫn chiếu.
+
+**Acceptance Criteria:**
+
+**Given** JSON `{nodes, edges}` từ KnowledgeBase,
+**When** mở tab Đồ thị tri thức,
+**Then** render react-force-graph-2d, node = văn bản/điều khoản, cạnh màu theo loại quan hệ (FR-12, UX-DR7).
+**And** bấm node hiện chi tiết điều khoản + mở timeline của nó.
+**And** có bảng danh sách quan hệ thay thế cho người không thao tác đồ hình (UX-DR13).
+
+### Story 2.2: Dòng thời gian phiên bản điều khoản
+As a cán bộ tuân thủ,
+I want xem một điều khoản đã tiến hóa qua các bản nào,
+So that hiểu vì sao bản hiện hành khác bản cũ.
+
+**Acceptance Criteria:**
+
+**Given** một `clause_id` có chuỗi `SUPERSEDED_BY`,
+**When** mở tab Dòng thời gian,
+**Then** hiện các phiên bản theo thời gian với ngày hiệu lực; bản hiện hành nổi bật, bản cũ mờ + gạch ngang (FR-10, UX-DR8).
+**And** với `ty_le_an_toan_von`: hiện 8% (2016→2023) → 9% (2023→nay).
+
+### Story 2.3: Bấm nguồn ↔ highlight node (hai chiều)
+As a người dùng,
+I want bấm SourceCard để nhảy tới node đồ thị và ngược lại,
+So that liên kết câu trả lời với cấu trúc quan hệ.
+
+**Acceptance Criteria:**
+
+**Given** một câu trả lời có nguồn và đồ thị đang mở,
+**When** bấm SourceCard,
+**Then** node tương ứng được highlight/nhấp nháy; bấm node cũng highlight SourceCard (FR-13, UX-DR4).
+
+## Epic 3: Cảnh báo xung đột
+
+Mục tiêu: cảnh báo khi hai quy định cùng hiệu lực mâu thuẫn số liệu.
+
+### Story 3.1: Rule phát hiện xung đột
+As a hệ thống,
+I want quét dữ liệu để phát hiện điều khoản cùng chủ đề, cùng hiệu lực nhưng khác giá trị số,
+So that cảnh báo được mâu thuẫn thật.
+
+**Acceptance Criteria:**
+
+**Given** tập điều khoản còn hiệu lực,
+**When** chạy stage `conflict_check` (sau `temporal_filter`),
+**Then** với các clause cùng `topic` và cùng active, so sánh `metric.value`; khác nhau → gắn cờ xung đột (FR-11, AD-3).
+**And** phát hiện `TT22/Điều 1` (9%) vs `QD-INT/Điều 2` (8%) — rule **quét thật**, không hardcode (NFR-7).
+**And** chịu được ≥1 ca dựng thêm không xem trước; ca "bản cũ vs bản mới" KHÔNG bị coi là xung đột (đã do temporal xử).
+
+### Story 3.2: Hiển thị banner cảnh báo xung đột
+As a nhân viên,
+I want thấy cảnh báo rõ khi có xung đột,
+So that tôi thận trọng trước khi áp dụng.
+
+**Acceptance Criteria:**
+
+**Given** `conflictWarning` khác null,
+**When** hiển thị câu trả lời,
+**Then** hiện ConflictBanner (amber, icon ⚠) liệt kê 2 nguồn mâu thuẫn (FR-13, UX-DR6).
+**And** banner không chiếm toàn màn, có nút "xem chi tiết".
+
+## Epic 4: Chứng minh hơn RAG thường (Benchmark)
+
+Mục tiêu: đặt cạnh RAG baseline để lộ khác biệt, đa bằng chứng.
+
+### Story 4.1: Chế độ baseline (tắt expand + temporal)
+As a người trình bày,
+I want chạy cùng pipeline với `mode=baseline` (tắt expand + temporal),
+So that có đối chứng RAG thường trung thực.
+
+**Acceptance Criteria:**
+
+**Given** một câu hỏi và `mode=baseline`,
+**When** gọi `/api/chat`,
+**Then** pipeline bỏ qua `expand` và `temporal_filter`, giữ nguyên retrieve+synthesize (FR-14, AD-3).
+**And** cùng câu bẫy: baseline trả 8% (bản cũ), `mode=system` trả 9% + cảnh báo (NFR-6: baseline không bị làm yếu giả tạo).
+
+### Story 4.2: Màn benchmark 2 cột + đa bằng chứng
+As a ban giám khảo,
+I want thấy hai kết quả cạnh nhau cho cùng câu hỏi,
+So that thấy ngay khác biệt.
+
+**Acceptance Criteria:**
+
+**Given** màn Benchmark,
+**When** nhập câu hỏi,
+**Then** hiện 2 cột đồng bộ (RAG thường / Copilot), tô chỗ khác biệt (FR-14, UX-DR9).
+**And** có sẵn ≥1 bằng chứng KHÔNG cần delta số: B (thay thế một phần) và/hoặc C (dẫn chiếu) (FR-15).
+
+## Epic 5: Quản trị nội dung (Admin/Ingest)
+
+Mục tiêu: nạp văn bản mới qua UI, cập nhật đồ thị an toàn.
+
+### Story 5.1: Nạp văn bản qua Admin (Streamlit) + atomic swap
+As a admin nội dung,
+I want nạp/cập nhật văn bản qua giao diện,
+So that đưa quy định mới vào hệ thống không cần chạm code.
+
+**Acceptance Criteria:**
+
+**Given** màn Admin (Streamlit),
+**When** nạp một văn bản/JSON mới,
+**Then** dựng KnowledgeBase mới rồi **atomic swap** `current_kb`; request đang chạy không bị ảnh hưởng (FR-3, AD-2, UX-DR11).
+**And** hiện thông báo "đã nạp, đồ thị cập nhật" + có nút "Chạy Radar".
+
+## Epic 6 (STRETCH): Radar Tác động
+
+Mục tiêu: báo cáo tác động khi nạp văn bản mới. Chỉ làm sau Epic 1–5.
+
+### Story 6.1: Báo cáo tác động lan tỏa
+As a admin,
+I want thấy văn bản mới ảnh hưởng tới điều khoản/văn bản nào,
+So that biết cần cập nhật gì mà không dò tay.
+
+**Acceptance Criteria:**
+
+**Given** một văn bản sửa đổi vừa nạp,
+**When** bấm "Chạy Radar",
+**Then** duyệt đồ thị và liệt kê đúng điều khoản/văn bản bị ảnh hưởng theo cạnh quan hệ (FR-16).
+**And** kịch bản deterministic (input chuẩn bị chắc kích hoạt), tính từ đồ thị runtime, không hardcode output (AD-9, NFR-7).
+
+## UX-DR Coverage
+- UX-DR1,2,3,4,5,15 → Story 1.6 · UX-DR7 → 2.1 · UX-DR8 → 2.2 · UX-DR4 → 2.3 · UX-DR6 → 3.2 · UX-DR9 → 4.2 · UX-DR10 → 1.6/1.7 · UX-DR11 → 5.1/6.1 · UX-DR12,14 → 1.6 · UX-DR13 → 1.6/2.1 (AC a11y) · UX-DR16 (mock) → tham chiếu Story 1.6.
