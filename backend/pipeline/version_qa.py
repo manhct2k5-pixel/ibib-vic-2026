@@ -37,26 +37,9 @@ def _regex_intent(question: str) -> str:
 
 
 def classify_intent(question: str) -> str:
-    """Phân loại ý định. LLM trước (nếu có key), regex fallback."""
-    rx = _regex_intent(question)
-    if rx != "content":  # regex có tín hiệu rõ → tin ngay (nhanh, chắc)
-        return rx
-    if not is_configured():
-        return "content"
-    system = (
-        "Phân loại câu hỏi pháp lý thành đúng 1 nhãn (chỉ trả 1 từ): "
-        "content = hỏi nội dung/quy định hiện hành; "
-        "version = liệt kê các phiên bản/lịch sử của một quy định; "
-        "change = hỏi quy định đã THAY ĐỔI/khác gì giữa các phiên bản."
-    )
-    try:
-        raw = get_llm().generate(system, f"Câu hỏi: {question}\nNhãn:", timeout=8).lower()
-        for label in ("change", "version", "content"):
-            if label in raw:
-                return label
-    except Exception:  # noqa: BLE001 — lỗi LLM → dùng regex
-        pass
-    return "content"
+    """Phân loại ý định bằng REGEX (nhanh, tất định, KHÔNG gọi LLM để tránh thêm
+    độ trễ cho mọi câu hỏi). Từ khóa version/change đủ rõ để bắt bằng regex."""
+    return _regex_intent(question)
 
 
 def version_chain(kb, clause_id: str) -> list:

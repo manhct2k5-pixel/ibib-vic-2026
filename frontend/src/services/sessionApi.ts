@@ -112,6 +112,8 @@ export type SessionConsolidated = {
     path: string
     clauseId: string
     text: string
+    consolidatedText?: string | null
+    changeSummary?: string | null
     status: 'active' | 'amended' | 'superseded' | 'expired'
     amendedBy: string | null
     amendNote: string | null

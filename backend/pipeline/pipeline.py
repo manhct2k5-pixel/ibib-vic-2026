@@ -34,7 +34,9 @@ def _llm_synthesize(question, active, superseded, as_of):
         "ngắn hoặc gạch đầu dòng). Ưu tiên điều khoản ĐANG HIỆU LỰC; nếu có điều bị "
         "thay thế liên quan thì nêu ngắn sự thay đổi."
     )
-    act_lines = "\n".join(f"[{c.clause_id}] {c.text}" for c in active)
+    # Giới hạn số điều + độ dài để prompt không quá lớn (tránh LLM chậm/timeout,
+    # đặc biệt khi có nhiều tài liệu đính kèm phiên).
+    act_lines = "\n".join(f"[{c.clause_id}] {c.text[:700]}" for c in active[:8])
     parts = [f"Câu hỏi: {question}", f"Mốc thời gian đối soát: {as_of}", "",
              "ĐIỀU KHOẢN ĐANG HIỆU LỰC (dùng để trả lời):", act_lines or "(không có)"]
     if superseded:
@@ -63,6 +65,82 @@ class Candidate(BaseModel):
     metric_value: Optional[float] = None
     metric_unit: Optional[str] = None
     why: Dict[str, Any] = {}
+
+_REL_LABEL = {
+    "REFERENCES": "Dẫn chiếu", "GUIDES": "Hướng dẫn",
+    "AMENDS": "Sửa đổi", "SUPERSEDES": "Thay thế", "RELATED": "Liên quan",
+}
+
+
+def _build_living_doc(kb, active, all_candidates, as_of):
+    """Dựng 'VĂN BẢN HỢP NHẤT SỐNG': các điều khoản TRỰC TIẾP + ĐANG HIỆU LỰC liên
+    quan câu hỏi, kèm dấu vết provenance (thay thế điều nào, bị sửa bởi ai). Phần
+    liên quan gián tiếp (vòng 1-hop + ứng viên chưa hiện) gói vào `related` để bung
+    dần theo focus+context."""
+    shown = active[:5]
+    if not shown:
+        return None
+    shown_ids = {c.clause_id for c in shown}
+    related: dict = {}  # clause_id -> item (dedup)
+
+    def _add_related(cid, rel_type, rel_to):
+        if cid in shown_ids or cid in related:
+            return
+        oc = kb.clauses_dict.get(cid)
+        if not oc:
+            return
+        related[cid] = {
+            "clauseId": cid, "path": oc.path, "docCode": oc.doc_code,
+            "text": oc.text[:220], "relType": rel_type,
+            "relLabel": _REL_LABEL.get(rel_type, rel_type),
+            "relTo": rel_to, "isActive": kb.is_active(cid, as_of),
+        }
+
+    clauses = []
+    for c in shown:
+        prov = {"supersedes": None, "amendedBy": []}
+        if c.clause_id in kb.graph:
+            for _u, v, d in kb.graph.out_edges(c.clause_id, data=True):
+                t = d.get("type")
+                if t == "SUPERSEDES":
+                    old = kb.clauses_dict.get(v)
+                    if old:
+                        prov["supersedes"] = {
+                            "clauseId": v, "docCode": old.doc_code,
+                            "text": old.text, "note": d.get("note"),
+                        }
+                else:  # dẫn chiếu/hướng dẫn cấp 1 → vòng liên quan
+                    _add_related(v, t, c.clause_id)
+            for u, _v, d in kb.graph.in_edges(c.clause_id, data=True):
+                t = d.get("type")
+                if t == "AMENDS":
+                    src = kb.clauses_dict.get(u)
+                    prov["amendedBy"].append({
+                        "clauseId": u,
+                        "docCode": src.doc_code if src else "",
+                        "note": d.get("note"),
+                    })
+                elif t != "SUPERSEDES":
+                    _add_related(u, t, c.clause_id)
+        clauses.append({
+            "clauseId": c.clause_id, "path": c.path, "docCode": c.doc_code,
+            "text": c.text, "effectiveDate": str(c.effective_date),
+            "provenance": prov,
+        })
+
+    # ứng viên đã truy hồi nhưng không nằm trong tầng hiện → cũng là "liên quan"
+    for c in all_candidates:
+        _add_related(c.clause_id, "RELATED", None)
+
+    related_list = list(related.values())
+    built_from = sorted({c.doc_code for c in shown})
+    return {
+        "clauses": clauses,
+        "builtFrom": built_from,
+        "related": related_list,
+        "hiddenCount": len(related_list),
+    }
+
 
 def vector_retrieve_stage(
     question: str, kb: KnowledgeBase, role: str, department: Optional[str] = None,
@@ -174,7 +252,7 @@ def run_pipeline(
             session_clauses, question, as_of, role
         )
         existing = {c.clause_id for c in candidates}
-        for c in session_hits:
+        for c in session_hits[:8]:  # cắt bớt để không phình candidate (nhiều tài liệu)
             if c.clause_id not in existing:
                 candidates.append(c)
                 existing.add(c.clause_id)
@@ -266,6 +344,11 @@ def run_pipeline(
     # 6. COMPILE SOURCES FOR RESPONSE
     sources = compile_sources(active_candidates, superseded_candidates, kb, is_baseline)
 
+    # 6b. VĂN BẢN HỢP NHẤT SỐNG (chỉ content mode): bản còn hiệu lực + provenance.
+    living_doc = None
+    if not is_baseline and intent == "content":
+        living_doc = _build_living_doc(kb, active_candidates, candidates, as_of)
+
     latency_ms = int((datetime.now() - start_time).total_seconds() * 1000)
 
     return {
@@ -273,6 +356,7 @@ def run_pipeline(
         "sources": sources,
         "conflictWarning": conflict_warning,
         "intent": intent,  # content | version | change (định tuyến VersionRAG-style)
+        "livingDoc": living_doc,  # văn bản hợp nhất sống (bản còn hiệu lực + provenance)
         "confidence": (
             "Cần kiểm tra xung đột"
             if conflict_warning

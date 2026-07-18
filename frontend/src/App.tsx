@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import type { FormEvent, KeyboardEvent } from 'react'
-import { sendChatRequest, type SourceItem } from './services/chatApi'
+import { sendChatRequest, type SourceItem, type LivingDoc } from './services/chatApi'
 import SourceCard from './components/SourceCard'
+import LivingDocView from './components/LivingDocView'
 import ManagerPanel from './components/ManagerPanel'
 import { analyzeSession, removeSessionDoc, getSessionConsolidated, type SessionUploadResult, type SessionAnalysis, type SessionConsolidated } from './services/sessionApi'
 import ConsolidatedDocView from './components/ConsolidatedDocView'
@@ -214,6 +215,7 @@ function App() {
   const [sources, setSources] = useState<SourceItem[]>(Array.isArray(initialWorkspace.sources) ? initialWorkspace.sources : [])
   const [conflictWarning, setConflictWarning] = useState<string | null>(typeof initialWorkspace.conflictWarning === 'string' ? initialWorkspace.conflictWarning : null)
   const [intent, setIntent] = useState<string | null>(null)
+  const [livingDoc, setLivingDoc] = useState<LivingDoc | null>(null)
   const [requestId, setRequestId] = useState<string | null>(typeof initialWorkspace.requestId === 'string' ? initialWorkspace.requestId : null)
   const [latencyMs, setLatencyMs] = useState<number | null>(typeof initialWorkspace.latencyMs === 'number' ? initialWorkspace.latencyMs : null)
   const [asOf, setAsOf] = useState(typeof initialWorkspace.asOf === 'string' ? initialWorkspace.asOf : getLocalIsoDate)
@@ -455,7 +457,7 @@ function App() {
     setLastQuestion(value)
     setAskedQuestion(value)
     setConsolidateDoc(null)
-    setError(''); setAnswer(''); setSources([]); setConflictWarning(null); setRequestId(null); setLatencyMs(null); setIntent(null); setIsLoading(true)
+    setError(''); setAnswer(''); setSources([]); setConflictWarning(null); setRequestId(null); setLatencyMs(null); setIntent(null); setLivingDoc(null); setIsLoading(true)
     // Ấn Gửi mới phân tích tài liệu đính kèm (LLM trích quan hệ) — chạy song song.
     if (attachedDocs.length > 0) {
       void analyzeSession(sessionId)
@@ -472,6 +474,7 @@ function App() {
       setSources(result.sources)
       setConflictWarning(result.conflictWarning ?? null)
       setIntent(result.intent ?? null)
+      setLivingDoc(result.livingDoc ?? null)
       setRequestId(result.requestId ?? null)
       setLatencyMs(result.latencyMs ?? null)
       setHistory(addHistory(value))
@@ -525,11 +528,6 @@ function App() {
       .catch(() => { /* xoá lỗi — giữ nguyên trạng thái */ })
   }
 
-  const openConsolidate = (docCode: string) => {
-    setShowAnalysis(false)
-    setMergedDoc(null)
-    setConsolidateDoc(docCode)
-  }
 
   const openMergedConsolidated = () => {
     setConsolidateDoc(null)
@@ -688,6 +686,7 @@ function App() {
                 <>
                   {conflictWarning?.trim() && <div className="conflict-warning"><strong>⚠ Cảnh báo mâu thuẫn</strong><p>{conflictWarning}</p></div>}
                   {intent && intent !== 'content' && <span className={`intent-badge ${intent}`}>{intent === 'version' ? '🕑 Truy vấn phiên bản' : '🔀 Truy vấn thay đổi'}</span>}
+                  {livingDoc && livingDoc.clauses.length > 0 && <LivingDocView doc={livingDoc} />}
                   <FormattedAnswer content={answer} />
                   {sources.length > 0 && <details className="source-list"><summary>Nguồn tham khảo <span>{sources.length}</span></summary>{sources.map((source, index) => <SourceCard source={source} key={`${source.clauseId}-${index}`} />)}</details>}
                   {(requestId || latencyMs !== null) && <div className="response-footer">{requestId && <span>Request ID: {requestId}</span>}{requestId && latencyMs !== null && <i />}{latencyMs !== null && <span>{latencyMs.toLocaleString('vi-VN')} ms</span>}</div>}
@@ -786,8 +785,9 @@ function App() {
 
           {(uploadInfo || docChips.length > 0 || analysis) && <div className="consolidate-chips">
             {analysis && analysis.documents.length > 0 && <button type="button" className={`consolidate-chip analysis ${showAnalysis ? 'active' : ''}`} onClick={() => { setShowAnalysis((v) => !v); setConsolidateDoc(null) }}>Bản đồ quan hệ &amp; hướng dẫn đọc ({analysis.documents.length})</button>}
-            {uploadInfo && <button type="button" className="consolidate-chip attached" onClick={() => openConsolidate(uploadInfo.docCode)}>Tệp vừa đính kèm: {uploadInfo.docCode}</button>}
-            {docChips.map((docCode) => <button key={docCode} type="button" className={`consolidate-chip ${consolidateDoc === docCode ? 'active' : ''}`} onClick={() => setConsolidateDoc(consolidateDoc === docCode ? null : docCode)}>Văn bản hợp nhất: {docCode}</button>)}
+            {attachedDocs.length > 0
+              ? <button type="button" className={`consolidate-chip merged ${mergedDoc ? 'active' : ''}`} onClick={openMergedConsolidated}>📄 Văn bản hợp nhất tổng hợp</button>
+              : docChips.map((docCode) => <button key={docCode} type="button" className={`consolidate-chip ${consolidateDoc === docCode ? 'active' : ''}`} onClick={() => setConsolidateDoc(consolidateDoc === docCode ? null : docCode)}>Văn bản hợp nhất: {docCode}</button>)}
           </div>}
           {uploadErrors.length > 0 && <div className="upload-errors">
             <div className="upload-errors-head"><strong>{uploadErrors.length} tệp chưa xử lý được</strong><button type="button" onClick={() => setUploadErrors([])} aria-label="Đóng">×</button></div>

@@ -4,6 +4,8 @@ export type ConsolidatedSection = {
   path: string
   clauseId: string
   text: string
+  consolidatedText?: string | null // bản đã áp sửa đổi (LLM merge)
+  changeSummary?: string | null // tóm tắt phần đã thay đổi
   status: 'active' | 'amended' | 'superseded' | 'expired'
   amendedBy: string | null
   amendNote: string | null

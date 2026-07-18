@@ -10,11 +10,42 @@
   supersededBy: string | null
 }
 
+export type LivingClause = {
+  clauseId: string
+  path: string
+  docCode: string
+  text: string
+  effectiveDate: string
+  provenance: {
+    supersedes: { clauseId: string; docCode: string; text: string; note: string | null } | null
+    amendedBy: { clauseId: string; docCode: string; note: string | null }[]
+  }
+}
+
+export type RelatedItem = {
+  clauseId: string
+  path: string
+  docCode: string
+  text: string
+  relType: string
+  relLabel: string
+  relTo: string | null
+  isActive: boolean
+}
+
+export type LivingDoc = {
+  clauses: LivingClause[]
+  builtFrom: string[]
+  related: RelatedItem[]
+  hiddenCount: number
+}
+
 export type ChatResponse = {
   answer: string
   sources: SourceItem[]
   conflictWarning?: string | null
   intent?: 'content' | 'version' | 'change' | string
+  livingDoc?: LivingDoc | null
   requestId?: string
   latencyMs?: number
 }
@@ -37,7 +68,7 @@ const API_BASE_URL = (
   import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'
 ).replace(/\/$/, '')
 
-const REQUEST_TIMEOUT_MS = 15_000
+const REQUEST_TIMEOUT_MS = 45_000
 
 export const checkBackendHealth = async (): Promise<BackendHealth> => {
   if (API_MODE === 'mock') return { status: 'mock', clauses: 1 }
@@ -241,6 +272,10 @@ export const sendChatRequest = async (
       answer: payload.answer,
       sources: parseSources(payload.sources),
       intent: typeof payload.intent === 'string' ? payload.intent : undefined,
+      livingDoc:
+        payload.livingDoc && typeof payload.livingDoc === 'object'
+          ? (payload.livingDoc as LivingDoc)
+          : null,
       conflictWarning:
         typeof payload.conflictWarning === 'string'
           ? payload.conflictWarning
@@ -263,7 +298,7 @@ export const sendChatRequest = async (
   } catch (error: unknown) {
     if (error instanceof DOMException && error.name === 'AbortError') {
       throw new Error(
-        'Backend phản hồi quá 15 giây. Vui lòng thử lại hoặc chuyển sang phương án dự phòng.',
+        'Backend phản hồi quá 45 giây. Vui lòng thử lại hoặc chuyển sang phương án dự phòng.',
       )
     }
 

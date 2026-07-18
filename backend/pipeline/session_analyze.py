@@ -10,13 +10,63 @@ trên loại quan hệ (CONSOLIDATES/AMENDS/SUPERSEDES/REFERENCES/GUIDES).
 
 from __future__ import annotations
 
+import json
 import re
-from typing import Any
+from typing import Any, Optional
+
+from backend.providers.llm import get_llm, is_configured
+
+_MAX_LLM_MERGES = 8  # chặn trần số lời gọi LLM/1 văn bản hợp nhất (giới hạn độ trễ)
 
 
 def _norm_path(p: str) -> str:
     """Chuẩn hoá 'Điều 22' để so khớp article (bỏ dấu cách thừa, thường hoá)."""
     return re.sub(r"\s+", " ", (p or "").strip().lower())
+
+
+def _amending_text(clauses: list, from_doc: str, to_article: Optional[str]) -> str:
+    """Gom nội dung điều khoản của VĂN BẢN SỬA ĐỔI (from_doc). Ưu tiên clause nhắc
+    tới đúng Điều bị sửa; nếu không thì lấy toàn bộ (cap độ dài)."""
+    doc_clauses = [c for c in clauses if c.doc_code == from_doc]
+    if to_article:
+        nums = re.findall(r"\d+", to_article)
+        if nums:
+            focused = [c for c in doc_clauses if nums[0] in (c.text or "")]
+            if focused:
+                doc_clauses = focused
+    return "\n".join(f"[{c.path}] {c.text}" for c in doc_clauses)[:3000]
+
+
+def _llm_merge_clause(
+    clause_id: str, original: str, amending_text: str, amend_note: Optional[str]
+) -> Optional[dict]:
+    """LLM sinh VĂN BẢN HỢP NHẤT của một Điều: áp sửa đổi vào điều gốc, tự khớp
+    Khoản/Điểm. Trả {consolidated, changes} hoặc None (lỗi → giữ text gốc)."""
+    if not is_configured():
+        return None
+    system = (
+        "Bạn tạo VĂN BẢN HỢP NHẤT pháp lý Việt Nam. Cho ĐIỀU GỐC và NỘI DUNG SỬA "
+        "ĐỔI, hãy viết lại toàn văn Điều đã ÁP DỤNG sửa đổi: giữ nguyên phần không "
+        "đổi, chỉ thay/bổ sung/bãi bỏ đúng Khoản/Điểm bị sửa. CHỈ trả JSON: "
+        '{"consolidated": "<toàn văn Điều sau hợp nhất>", "changes": "<1 câu tóm '
+        'tắt phần đã thay đổi>"}. KHÔNG bịa, chỉ dùng nội dung được cung cấp. Thiếu '
+        "thông tin để hợp nhất → consolidated = nguyên văn Điều gốc."
+    )
+    prompt = (
+        f"ĐIỀU GỐC [{clause_id}]:\n{original}\n\n"
+        f"NỘI DUNG SỬA ĐỔI:\n{amending_text}\n"
+        f"Ghi chú sửa đổi: {amend_note or '(không có)'}\n\nTrả JSON:"
+    )
+    try:
+        raw = get_llm().generate(system, prompt, timeout=25)
+        s, e = raw.find("{"), raw.rfind("}")
+        if s == -1 or e == -1:
+            return None
+        obj = json.loads(raw[s : e + 1])
+        merged = str(obj.get("consolidated") or "").strip()
+        return {"consolidated": merged, "changes": str(obj.get("changes") or "").strip()} if merged else None
+    except Exception:  # noqa: BLE001 — lỗi LLM → giữ text gốc
+        return None
 
 
 def pick_primary_doc(docs: list, relations: list) -> str | None:
@@ -41,10 +91,11 @@ def pick_primary_doc(docs: list, relations: list) -> str | None:
 
 
 def build_session_consolidated(
-    docs: list, relations: list, clauses: list, as_of
+    docs: list, relations: list, clauses: list, as_of, llm_merge: bool = True
 ) -> dict:
     """Dựng MỘT văn bản hợp nhất tổng hợp quanh văn bản nền (primary): liệt kê các
-    điều của bản nền, đánh dấu điều nào bị văn bản khác trong phiên sửa đổi."""
+    điều của bản nền; điều bị sửa đổi được LLM ÁP nội dung sửa vào điều gốc → sinh
+    `consolidatedText` (đọc liền mạch) + trace-back, giữ cả `text` gốc để đối chiếu."""
     primary = pick_primary_doc(docs, relations)
     if not primary:
         return {"docCode": None, "sections": []}
@@ -65,6 +116,7 @@ def build_session_consolidated(
         return nums or [0]
 
     sections = []
+    merges_done = 0
     for c in sorted(base_clauses, key=_key):
         art = _norm_path(c.path)
         # ưu tiên sửa đổi đúng Điều; nếu không có Điều thì áp dụng mức văn bản
@@ -73,14 +125,30 @@ def build_session_consolidated(
             None,
         )
         status = "amended" if hit else "active"
+
+        consolidated_text = None
+        change_summary = None
+        amending_text = None
+        if hit:
+            amending_text = _amending_text(clauses, hit.from_doc, hit.to_article)
+            # LLM áp sửa đổi vào điều gốc (giới hạn số lần gọi)
+            if llm_merge and merges_done < _MAX_LLM_MERGES:
+                merged = _llm_merge_clause(c.clause_id, c.text, amending_text, hit.note)
+                merges_done += 1
+                if merged:
+                    consolidated_text = merged["consolidated"]
+                    change_summary = merged["changes"]
+
         sections.append({
             "path": c.path,
             "clauseId": c.clause_id,
-            "text": c.text,
+            "text": c.text,  # nguyên văn Điều gốc (để đối chiếu cũ/mới)
+            "consolidatedText": consolidated_text,  # bản đã áp sửa đổi (đọc chính)
+            "changeSummary": change_summary,  # tóm tắt phần đã thay đổi
             "status": status,
             "amendedBy": hit.from_doc if hit else None,
             "amendNote": hit.note if hit else None,
-            "amendedByText": None,
+            "amendedByText": amending_text,  # nội dung văn bản sửa đổi
             "amendedByPath": hit.to_article if hit else None,
             "effectiveFrom": c.effective_date.isoformat() if c.effective_date else "",
             "fromSession": True,

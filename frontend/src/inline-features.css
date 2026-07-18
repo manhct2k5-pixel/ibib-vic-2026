@@ -1,5 +1,36 @@
 /* Style cho các feature port Epic 2/7 (inline trong chat) — theo accent cam #ff781d. */
 
+/* ── Văn bản hợp nhất SỐNG (bề mặt hiểu chính của câu trả lời) ── */
+.living-doc { margin: 6px 0 12px; border: 1px solid #cfe8d6; border-radius: 10px; background: #f6fbf7; overflow: hidden; }
+.living-head { padding: 8px 12px; background: #eaf6ee; border-bottom: 1px solid #cfe8d6; }
+.living-head strong { font-size: 12px; color: #1f7a33; }
+.living-clause { padding: 10px 12px; border-bottom: 1px solid #e6f1e9; }
+.living-clause:last-of-type { border-bottom: 0; }
+.living-clause-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 4px; }
+.living-path { font-size: 12px; font-weight: 700; color: #141a20; }
+.living-src { font-size: 10px; color: #59616a; }
+.living-badge { margin-left: auto; font-size: 9px; font-weight: 700; padding: 1px 7px; border-radius: 10px; background: #e7f6e9; color: #1f7a33; }
+.living-text { margin: 0; font-size: 12px; line-height: 1.55; color: #29323a; }
+.living-prov { margin-top: 6px; }
+.living-prov > summary { font-size: 10px; color: #b45309; cursor: pointer; font-weight: 600; }
+.living-old { margin: 5px 0 0; font-size: 11px; color: #8b949b; }
+.living-old .struck { text-decoration: line-through; }
+.living-amend { margin-top: 5px; font-size: 10px; color: #9a5b00; }
+.living-foot { padding: 7px 12px; background: #eef5f0; border-top: 1px solid #cfe8d6; font-size: 10px; color: #4b5560; }
+.living-expand { border: 0; background: transparent; color: #1f7a33; font-size: 10px; font-weight: 700; cursor: pointer; padding: 0; }
+.living-expand:hover { text-decoration: underline; }
+.living-related { padding: 8px 12px; background: #fbfcfd; border-top: 1px dashed #cfe8d6; display: flex; flex-direction: column; gap: 8px; }
+.related-item { border-left: 3px solid #cfe8d6; padding-left: 8px; }
+.related-item.expired { opacity: .6; border-left-color: #d1d5db; }
+.related-tag { font-size: 8px; font-weight: 700; padding: 1px 6px; border-radius: 8px; background: #eef1f3; color: #59616a; margin-right: 5px; }
+.related-tag.REFERENCES { background: #eef1f3; color: #475569; }
+.related-tag.GUIDES { background: #e6f4fb; color: #0369a1; }
+.related-tag.AMENDS { background: #fff0dd; color: #9a5b00; }
+.related-tag.RELATED { background: #f3ecff; color: #6d28d9; }
+.related-cid { font-size: 10px; font-weight: 700; color: #a64a00; }
+.related-exp { font-size: 8px; color: #b42318; margin-left: 5px; }
+.related-text { margin: 3px 0 0; font-size: 11px; color: #4b5560; line-height: 1.5; }
+
 /* Badge loại truy vấn (định tuyến ý định VersionRAG-style) */
 .intent-badge { display: inline-block; margin-bottom: 8px; padding: 3px 10px; border-radius: 12px; font-size: 10px; font-weight: 700; }
 .intent-badge.version { background: #eaf1ff; color: #2b58b8; }
@@ -103,6 +134,16 @@
 .section-badge.amended { background: #fff0dd; color: #9a5b00; }
 .section-badge.superseded, .section-badge.expired { background: #fdeceb; color: #b42318; }
 .section-badge.session { background: #eaf1ff; color: #2b58b8; }
+.section-badge.merged { background: #e7f6e9; color: #1f7a33; }
+
+/* Bản hợp nhất: highlight phần thêm/đổi + đối chiếu cũ-mới */
+.consolidated-section .section-text mark { background: #d6f4dd; color: #12602a; padding: 0 2px; border-radius: 3px; }
+.change-summary { margin-top: 5px; font-size: 10px; color: #1f7a33; font-style: italic; }
+.compare { margin-top: 8px; }
+.compare > summary { font-size: 10px; color: #7c3aed; cursor: pointer; font-weight: 600; }
+.compare-old, .compare-src { margin-top: 6px; }
+.compare-old strong, .compare-src strong { display: block; font-size: 10px; color: #59616a; margin-bottom: 2px; }
+.compare-src strong { color: #c2560f; }
 .section-text { font-size: 11px; color: #4b5560; line-height: 1.55; margin: 0; }
 .section-text.struck { text-decoration: line-through; opacity: .65; }
 .section-amend { margin-top: 6px; padding: 7px 9px; border-left: 3px solid #ff781d; background: #fff6ef; border-radius: 0 6px 6px 0; }
