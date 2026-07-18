@@ -232,7 +232,6 @@ function App() {
       </main>
 
       <footer>
-        <p>© 2024 Sovereign Compliance AI. All rights reserved.</p>
         <nav><a href="#privacy">Chính sách bảo mật</a><a href="#terms">Điều khoản dịch vụ</a></nav>
       </footer>
 
