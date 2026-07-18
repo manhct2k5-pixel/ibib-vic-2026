@@ -1,4 +1,4 @@
-﻿# IBIB - Vietnam Innovation Challenge 2026
+# IBIB - Vietnam Innovation Challenge 2026
 
 Repository chung của Team IBIB.
 

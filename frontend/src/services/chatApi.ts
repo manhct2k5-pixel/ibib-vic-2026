@@ -1,4 +1,4 @@
-﻿export type SourceItem = {
+export type SourceItem = {
   name: string
   description: string
 }

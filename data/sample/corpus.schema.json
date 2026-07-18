@@ -24,7 +24,7 @@
         "properties": {
           "doc_code": { "type": "string", "description": "Viết tắt ổn định, VD 'TT41'. Dùng làm tiền tố clause_id." },
           "title": { "type": "string" },
-          "type": { "type": "string", "enum": ["Luật", "NghiDinh", "ThongTu", "Basel", "QuyTrinhNoiBo"] },
+          "type": { "type": "string", "enum": ["Luật", "NghiDinh", "ThongTu", "QuyetDinh", "Basel", "QuyTrinhNoiBo"] },
           "issuer": { "type": "string", "description": "VD 'NHNN', 'ChinhPhu', 'SHB'" },
           "issue_date": { "type": "string", "format": "date" },
           "effective_date": { "type": "string", "format": "date" },

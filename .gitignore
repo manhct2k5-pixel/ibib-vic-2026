@@ -1,4 +1,4 @@
-﻿# API keys và biến môi trường
+# API keys và biến môi trường
 .env
 .env.*
 !.env.example
@@ -35,3 +35,6 @@ _bmad/
 # Dữ liệu không được công khai
 data/private/
 secrets/
+
+# Temporary Excel/Office lock files
+~$*
