@@ -1,16 +1,69 @@
-.composer-wrap { position: relative; }
+.panel-shell { position: relative; }
+.panel-shell > header > .icon { margin-right: 40px; }
+.auth-shell { grid-template-rows:60px 1fr; }
+.auth-gate { padding:28px; display:flex; align-items:center; justify-content:center; flex-direction:column; text-align:center; }
+.auth-gate > i { width:54px; height:54px; display:grid; place-items:center; color:#fff; border-radius:17px; background:linear-gradient(145deg,#ff922b,#ff6814); box-shadow:0 9px 22px rgba(255,104,20,.24); font-size:17px; font-weight:800; font-style:normal; }
+.auth-gate h1 { margin:18px 0 8px; color:#20262b; font-size:20px; }
+.auth-gate p { max-width:310px; margin:0; color:#717c84; font-size:10px; line-height:1.65; }
+.auth-gate button { width:min(260px,100%); height:40px; margin-top:20px; color:#fff; border:0; border-radius:21px; background:#ff781d; font-size:10px; font-weight:700; cursor:pointer; }
+.auth-gate button:hover { background:#e8640c; }
+.auth-gate small { margin-top:10px; color:#9aa1a6; font-size:8px; }
+.settings.settings-home { padding:12px 15px; display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.settings-home > div { min-width:0; }
+.settings-home strong { display:block; color:#303940; font-size:10px; }
+.settings-home p { max-width:260px; margin:4px 0 0; color:#79838a; font-size:8px; line-height:1.45; }
+.settings-home button { min-width:112px; padding:0 13px; white-space:nowrap; }
+@media (max-width:380px) { .settings.settings-home { align-items:stretch; flex-direction:column; }.settings-home button { width:100%; } }
+.composer-wrap {
+  position: absolute;
+  z-index: 10;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+}
 .composer-wrap form {
-  min-height: 104px;
-  padding: 16px 10px 9px 13px;
+  width: 100%;
+  max-width: 100%;
+  min-height: 96px;
+  padding: 10px 9px 8px 11px;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
   border-radius: 15px;
 }
 .composer-wrap textarea {
-  min-height: 42px;
+  min-height: 34px;
   flex: 1;
   font-size: 11px;
 }
+.active-page {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  min-height: 49px;
+  margin: -1px 0 8px;
+  padding: 5px 7px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #ffd4b5;
+  border-radius: 9px;
+  background: #fff8f3;
+  overflow: hidden;
+}
+.active-page img, .page-fallback { width: 17px; height: 17px; flex: 0 0 17px; border-radius: 4px; }
+.page-fallback { display: grid; place-items: center; color: #ff781d; background: #ffe7d6; font-size: 9px; }
+.active-page > div { width: 0; min-width: 0; flex: 1 1 auto; overflow: hidden; }
+.active-page small, .active-page strong, .active-page > div > span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.active-page small { color: #a65a25; font-size: 7px; }
+.active-page strong { margin-top: 1px; color: #333b41; font-size: 9px; }
+.active-page > div > span { margin-top: 1px; color: #8a9298; font-size: 7px; }
+.active-page > button { width: 22px; height: 22px; padding: 0; flex: 0 0 22px; color: #a05a29; border: 0; border-radius: 50%; background: transparent; cursor: pointer; }
+.active-page > button:hover { background: #ffe7d6; }
+.active-page > .summarize-page { width: auto; max-width: 58px; height: 24px; padding: 0 8px; flex: 0 0 auto; overflow: hidden; color: #c65305; border: 1px solid #ffc89f; border-radius: 12px; background: #fff; font-size: 7px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.active-page > .summarize-page:hover { background: #ffeadb; }
+.active-page > .summarize-page:disabled { opacity: .55; cursor: default; }
 .composer-wrap .tools {
   margin-top: 7px;
   display: flex;
@@ -19,6 +72,8 @@
   gap: 8px;
 }
 .left-tools, .right-tools { display: flex; align-items: center; gap: 7px; }
+.left-tools { min-width: 0; flex: 1 1 auto; }
+.right-tools { margin-left: auto; flex: 0 0 auto; }
 .circle-tool {
   width: 31px;
   height: 31px;
@@ -34,25 +89,55 @@
 }
 .circle-tool:hover { background: #ffe5d2; }
 .circle-tool input { display: none; }
-.circle-tool:not(button) { font-size: 0; }
-.circle-tool:not(button)::before { content: "📎"; font-size: 14px; line-height: 1; }
+.circle-tool svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .new-chat {
-  height: 31px;
-  padding: 0 12px;
+  height: 29px;
+  padding: 0 10px;
   color: #d85d08;
   border: 1px solid #ffd0ad !important;
   border-radius: 16px;
   background: #fff7f1;
   font-size: 9px;
   font-weight: 700;
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 .composer-wrap .tools #send {
-  width: 34px;
-  height: 34px;
+  width: 33px;
+  height: 33px;
   margin-left: 0;
   border-radius: 50%;
   font-size: 18px;
+  flex: 0 0 33px;
 }
+
+/* Tỷ lệ gọn hơn cho side panel, đồng bộ với giao diện chatbot chính. */
+.conversation { padding-top: 10px; padding-bottom: 190px; }
+.welcome { min-height: calc(100vh - 250px); padding-bottom: 10px; transform: none; }
+.welcome > i { width: 44px; height: 44px; border-radius: 12px; }
+.welcome h1 { margin-top: 12px; margin-bottom: 5px; font-size: 17px; }
+.welcome p { max-width: 270px; font-size: 9px; }
+.welcome > span { margin-top: 10px; padding: 4px 8px; }
+.composer-wrap { padding-top: 5px; padding-bottom: 8px; }
+.disclaimer { margin-top: 5px; }
+
+@media (max-height: 600px) {
+  .conversation { padding-bottom: 174px; }
+  .welcome { min-height: calc(100vh - 225px); }
+  .welcome > i { width: 38px; height: 38px; }
+  .welcome h1 { margin-top: 9px; font-size: 15px; }
+  .welcome > span { margin-top: 7px; }
+}
+
+.popup-page .bubble-toggle { margin: 15px 0; padding: 11px 12px; display:flex; align-items:center; justify-content:space-between; gap:12px; border:1px solid #ffe0c9; border-radius:11px; background:#fff8f3; cursor:pointer; }
+.bubble-toggle span, .bubble-toggle b, .bubble-toggle small { display:block; }
+.bubble-toggle b { color:#343b40; font-size:10px; }
+.bubble-toggle small { margin-top:3px; color:#a45a25; font-size:8px; }
+.bubble-toggle input { position:absolute; opacity:0; pointer-events:none; }
+.bubble-toggle i { position:relative; width:34px; height:19px; flex:0 0 34px; border-radius:10px; background:#d8dcdf; transition:.2s; }
+.bubble-toggle i::after { content:""; position:absolute; top:3px; left:3px; width:13px; height:13px; border-radius:50%; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,.2); transition:.2s; }
+.bubble-toggle input:checked + i { background:#ff781d; }
+.bubble-toggle input:checked + i::after { transform:translateX(15px); }
 .composer-history {
   position: absolute;
   z-index: 20;
