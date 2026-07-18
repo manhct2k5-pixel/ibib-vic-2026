@@ -1,0 +1,28 @@
+#sovereign-compliance-selection-button {
+  all: initial;
+  position: absolute;
+  z-index: 2147483647;
+  height: 32px;
+  padding: 0 10px 0 7px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #fff;
+  border: 1px solid rgba(255,255,255,.65);
+  border-radius: 17px;
+  background: #ff781d;
+  box-shadow: 0 5px 16px rgba(29,35,40,.24);
+  font-family: Arial, sans-serif;
+  cursor: pointer;
+  user-select: none;
+  animation: sovereign-compliance-pop .14s ease-out;
+}
+#sovereign-compliance-selection-button:hover { background: #e8640c; transform: translateY(-1px); }
+#sovereign-compliance-selection-button span {
+  width: 20px; height: 20px;
+  display: grid; place-items: center;
+  color: #ff781d; border-radius: 50%;
+  background: #fff; font-size: 7px;
+}
+#sovereign-compliance-selection-button b { color: #fff; font-size: 11px; font-weight: 700; white-space: nowrap; }
+@keyframes sovereign-compliance-pop { from { opacity: 0; transform: translateY(5px) scale(.94); } to { opacity: 1; transform: none; } }

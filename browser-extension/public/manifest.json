@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "Sovereign Compliance AI",
+  "version": "1.0.1",
+  "description": "Trợ lý tra cứu tuân thủ ngay trên Chrome và Microsoft Edge.",
+  "permissions": ["activeTab", "contextMenus", "sidePanel", "scripting", "storage"],
+  "host_permissions": ["<all_urls>"],
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "Mở Sovereign Compliance AI",
+    "default_popup": "popup.html"
+  },
+  "side_panel": { "default_path": "sidepanel.html" },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  }
+}

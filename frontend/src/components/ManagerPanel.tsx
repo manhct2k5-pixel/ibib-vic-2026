@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { ChangeEvent } from 'react'
 import './ManagerPanel.css'
 
@@ -40,6 +40,8 @@ export default function ManagerPanel({ notify }: { notify: Notify }) {
   const [issuer, setIssuer] = useState('Ngân hàng Nhà nước Việt Nam')
   const [effectiveDate, setEffectiveDate] = useState('')
   const [scope, setScope] = useState('Toàn hệ thống')
+  const [targetFolder, setTargetFolder] = useState('')
+  const [folderManuallySelected, setFolderManuallySelected] = useState(false)
   const [approved, setApproved] = useState(false)
   const [conflicts, setConflicts] = useState(initialConflicts)
   const [search, setSearch] = useState('')
@@ -57,6 +59,20 @@ export default function ManagerPanel({ notify }: { notify: Notify }) {
     return [metric[0], period === '30' ? values30[index] : valuesQuarter[index], metric[2], metric[3]]
   }), [period])
   const popularQuestions = ['Tỷ lệ an toàn vốn tối thiểu hiện nay?', 'Hồ sơ vay cần lưu trữ bao lâu?', 'Quy trình báo cáo giao dịch đáng ngờ?', 'Điều kiện mở tài khoản doanh nghiệp?', 'Thời hạn cập nhật thông tin KYC?', 'Giao dịch nào cần báo cáo NHNN?', 'Quy định cấp tín dụng cho bên liên quan?', 'Cách xác định khách hàng có rủi ro cao?']
+  const suggestedFolder = useMemo(() => {
+    const identity = `${documentNumber} ${issuer} ${documentName}`.toLocaleLowerCase('vi')
+    const isInternal = identity.includes('shb') || identity.includes('nội bộ') || identity.includes('quy trình') || identity.includes('quy chế')
+    if (isInternal) {
+      if (identity.includes('quy chế') || /(^|\s)qc[_\s-]/i.test(identity)) return 'Nội bộ SHB/Quy chế'
+      return 'Nội bộ SHB/Quy trình nghiệp vụ'
+    }
+    if (identity.includes('quyết định') || /(^|\s)qđ|qd[-_\s]/i.test(identity)) return 'Ngân hàng Nhà nước/Quyết định'
+    return 'Ngân hàng Nhà nước/Thông tư'
+  }, [documentName, documentNumber, issuer])
+
+  useEffect(() => {
+    if (!folderManuallySelected && (documentNumber.trim() || effectiveDate)) setTargetFolder(suggestedFolder)
+  }, [documentNumber, effectiveDate, folderManuallySelected, suggestedFolder])
 
   const exportDashboard = () => {
     const rows = [['Chỉ số', 'Giá trị', 'Thay đổi', 'Ghi chú'], ...dashboardMetrics]
@@ -77,9 +93,9 @@ export default function ManagerPanel({ notify }: { notify: Notify }) {
   }
 
   const approveDocument = () => {
-    if (!documentFile || !documentName.trim() || !documentNumber.trim() || !effectiveDate) return
+    if (!documentFile || !documentName.trim() || !documentNumber.trim() || !effectiveDate || !targetFolder) return
     setApproved(true)
-    notify('Tài liệu mới được phê duyệt', `${documentName} đã được quản lý đưa vào hệ thống.`)
+    notify('Tài liệu mới được phê duyệt', `${documentName} đã được lưu vào ${targetFolder}.`)
   }
 
   const resolveConflict = (id: number, action: 'resolved' | 'expert') => {
@@ -111,8 +127,8 @@ export default function ManagerPanel({ notify }: { notify: Notify }) {
         <header className="manager-title"><div><h1>Quản lý tài liệu</h1><p>Kiểm tra metadata và phê duyệt tài liệu trước khi đưa vào hệ thống.</p></div><span className="workflow-badge">Quy trình 5 bước</span></header>
         <div className="workflow-steps">{['Tải tài liệu', 'Kiểm tra metadata', 'Ngày hiệu lực', 'Phạm vi áp dụng', 'Phê duyệt'].map((step, i) => <div className={(approved || (i === 0 && documentFile) || (i > 0 && documentFile)) ? 'done' : ''} key={step}><b>{approved ? '✓' : i + 1}</b><span>{step}</span></div>)}</div>
         <div className="document-layout">
-          <article className="manager-card upload-card"><h2>1. Tải tài liệu</h2><label className="upload-zone"><input type="file" accept=".pdf,.doc,.docx" onChange={selectDocument} /><strong>{documentFile ? documentFile.name : 'Kéo thả hoặc chọn tài liệu'}</strong><span>PDF, DOC, DOCX · tối đa 20 MB</span><em>{documentFile ? 'Chọn tệp khác' : 'Chọn tệp'}</em></label>{documentFile && <p className="file-ready">✓ {(documentFile.size / 1024).toFixed(1)} KB · Sẵn sàng kiểm tra</p>}</article>
-          <article className="manager-card metadata-card"><h2>2–4. Xác nhận thông tin</h2><p className="system-suggestion">✦ Metadata hệ thống đề xuất — vui lòng kiểm tra trước khi phê duyệt.</p><div className="metadata-grid"><label><span>Tên tài liệu *</span><input value={documentName} onChange={(e) => setDocumentName(e.target.value)} placeholder="Tên văn bản" /></label><label><span>Số hiệu *</span><input value={documentNumber} onChange={(e) => setDocumentNumber(e.target.value)} placeholder="VD: 22/2019/TT-NHNN" /></label><label><span>Cơ quan ban hành</span><input value={issuer} onChange={(e) => setIssuer(e.target.value)} /></label><label><span>Ngày hiệu lực *</span><input type="date" value={effectiveDate} onChange={(e) => setEffectiveDate(e.target.value)} /></label><label className="full"><span>Phạm vi áp dụng *</span><select value={scope} onChange={(e) => setScope(e.target.value)}><option>Toàn hệ thống</option><option>Khách hàng công khai</option><option>Nội bộ nhân viên</option><option>Khối quản trị rủi ro</option></select></label></div><div className="approval-row"><p>{approved ? '✓ Tài liệu đã được phê duyệt và đưa vào hệ thống.' : 'Kiểm tra đầy đủ thông tin trước khi phê duyệt.'}</p><button type="button" disabled={!documentFile || !documentName.trim() || !documentNumber.trim() || !effectiveDate || approved} onClick={approveDocument}>{approved ? 'Đã phê duyệt' : 'Phê duyệt tài liệu'}</button></div></article>
+          <article className="manager-card upload-card"><h2>1. Chọn thư mục và tải tài liệu</h2><div className="pre-upload-folder"><label><span>Thư mục đích *</span><select value={targetFolder} onChange={(e) => { setTargetFolder(e.target.value); setFolderManuallySelected(true) }}><option value="" disabled>Chọn nơi lưu trước khi tải lên...</option><optgroup label="Ngân hàng Nhà nước"><option value="Ngân hàng Nhà nước/Thông tư">Thông tư (12 tệp)</option><option value="Ngân hàng Nhà nước/Quyết định">Quyết định (7 tệp)</option><option value="Ngân hàng Nhà nước/Văn bản hợp nhất">Văn bản hợp nhất (5 tệp)</option></optgroup><optgroup label="Nội bộ SHB"><option value="Nội bộ SHB/Quy trình nghiệp vụ">Quy trình nghiệp vụ (18 tệp)</option><option value="Nội bộ SHB/Quy chế">Quy chế (9 tệp)</option><option value="Nội bộ SHB/Hướng dẫn thực hiện">Hướng dẫn thực hiện (14 tệp)</option></optgroup></select></label>{targetFolder && <p>📁 Đang thêm vào: <strong>{targetFolder}</strong></p>}</div><label className={`upload-zone ${!targetFolder ? 'disabled' : ''}`}><input type="file" accept=".pdf,.doc,.docx" onChange={selectDocument} disabled={!targetFolder} /><strong>{documentFile ? documentFile.name : targetFolder ? 'Kéo thả hoặc chọn tài liệu' : 'Hãy chọn thư mục đích trước'}</strong><span>PDF, DOC, DOCX · tối đa 20 MB</span><em>{documentFile ? 'Chọn tệp khác' : 'Chọn tệp'}</em></label>{documentFile && <p className="file-ready">✓ {(documentFile.size / 1024).toFixed(1)} KB · Sẵn sàng kiểm tra trong {targetFolder}</p>}</article>
+          <article className="manager-card metadata-card"><h2>2–4. Xác nhận thông tin</h2><p className="system-suggestion">✦ Metadata hệ thống đề xuất — vui lòng kiểm tra trước khi phê duyệt.</p><div className="metadata-grid"><label><span>Tên tài liệu *</span><input value={documentName} onChange={(e) => setDocumentName(e.target.value)} placeholder="Tên văn bản" /></label><label><span>Số hiệu *</span><input value={documentNumber} onChange={(e) => setDocumentNumber(e.target.value)} placeholder="VD: 22/2019/TT-NHNN" /></label><label><span>Cơ quan ban hành</span><input value={issuer} onChange={(e) => setIssuer(e.target.value)} /></label><label><span>Ngày hiệu lực *</span><input type="date" value={effectiveDate} onChange={(e) => setEffectiveDate(e.target.value)} /></label><label className="full"><span>Phạm vi áp dụng *</span><select value={scope} onChange={(e) => setScope(e.target.value)}><option>Toàn hệ thống</option><option>Khách hàng công khai</option><option>Nội bộ nhân viên</option><option>Khối quản trị rủi ro</option></select></label><label className="full folder-field"><span>Thư mục lưu tài liệu *</span><div><select value={targetFolder} onChange={(e) => { setTargetFolder(e.target.value); setFolderManuallySelected(true) }}><optgroup label="Ngân hàng Nhà nước"><option value={`Ngân hàng Nhà nước/Thông tư/${effectiveDate.slice(0, 4) || 'Chưa xác định năm'}`}>Thông tư / {effectiveDate.slice(0, 4) || 'Chưa xác định năm'} (12 tệp)</option><option value={`Ngân hàng Nhà nước/Quyết định/${effectiveDate.slice(0, 4) || 'Chưa xác định năm'}`}>Quyết định / {effectiveDate.slice(0, 4) || 'Chưa xác định năm'} (7 tệp)</option><option value="Ngân hàng Nhà nước/Văn bản hợp nhất">Văn bản hợp nhất (5 tệp)</option></optgroup><optgroup label="Nội bộ SHB"><option value={`Nội bộ SHB/Quy trình nghiệp vụ/${effectiveDate.slice(0, 4) || 'Chưa xác định năm'}`}>Quy trình nghiệp vụ / {effectiveDate.slice(0, 4) || 'Chưa xác định năm'} (18 tệp)</option><option value={`Nội bộ SHB/Quy chế/${effectiveDate.slice(0, 4) || 'Chưa xác định năm'}`}>Quy chế / {effectiveDate.slice(0, 4) || 'Chưa xác định năm'} (9 tệp)</option><option value="Nội bộ SHB/Hướng dẫn thực hiện">Hướng dẫn thực hiện (14 tệp)</option></optgroup></select><button type="button" onClick={() => { setFolderManuallySelected(false); setTargetFolder(suggestedFolder) }}>✦ Tự động phân loại</button></div><small>Đề xuất theo số hiệu và ngày hiệu lực: <b>{suggestedFolder}</b></small></label></div><div className="approval-row"><p>{approved ? `✓ Đã lưu tài liệu vào ${targetFolder}.` : 'Kiểm tra đầy đủ thông tin và thư mục lưu trước khi phê duyệt.'}</p><button type="button" disabled={!documentFile || !documentName.trim() || !documentNumber.trim() || !effectiveDate || !targetFolder || approved} onClick={approveDocument}>{approved ? 'Đã phê duyệt' : 'Phê duyệt tài liệu'}</button></div></article>
         </div>
       </>}
 

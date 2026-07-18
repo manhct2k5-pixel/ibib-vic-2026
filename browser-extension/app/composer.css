@@ -1,0 +1,79 @@
+.composer-wrap { position: relative; }
+.composer-wrap form {
+  min-height: 104px;
+  padding: 16px 10px 9px 13px;
+  display: flex;
+  flex-direction: column;
+  border-radius: 15px;
+}
+.composer-wrap textarea {
+  min-height: 42px;
+  flex: 1;
+  font-size: 11px;
+}
+.composer-wrap .tools {
+  margin-top: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.left-tools, .right-tools { display: flex; align-items: center; gap: 7px; }
+.circle-tool {
+  width: 31px;
+  height: 31px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  color: #ff781d;
+  border: 0;
+  border-radius: 50%;
+  background: #fff2e9;
+  font-size: 15px;
+  cursor: pointer;
+}
+.circle-tool:hover { background: #ffe5d2; }
+.circle-tool input { display: none; }
+.circle-tool:not(button) { font-size: 0; }
+.circle-tool:not(button)::before { content: "📎"; font-size: 14px; line-height: 1; }
+.new-chat {
+  height: 31px;
+  padding: 0 12px;
+  color: #d85d08;
+  border: 1px solid #ffd0ad !important;
+  border-radius: 16px;
+  background: #fff7f1;
+  font-size: 9px;
+  font-weight: 700;
+}
+.composer-wrap .tools #send {
+  width: 34px;
+  height: 34px;
+  margin-left: 0;
+  border-radius: 50%;
+  font-size: 18px;
+}
+.composer-history {
+  position: absolute;
+  z-index: 20;
+  right: 13px;
+  bottom: 128px;
+  left: 13px;
+  max-height: 250px;
+  padding: 7px;
+  overflow-y: auto;
+  border: 1px solid #e1e5e8;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 12px 35px rgba(24,32,40,.18);
+}
+.composer-history header { padding: 7px 8px; display: flex; align-items: center; justify-content: space-between; }
+.composer-history header strong { font-size: 10px; }
+.composer-history header button { border: 0; background: transparent; cursor: pointer; }
+.composer-history > p { padding: 10px; color: #7c858c; font-size: 9px; }
+.history-row { width: 100%; padding: 8px; display: block; text-align: left; border: 0; border-radius: 7px; background: transparent; cursor: pointer; }
+.history-row:hover { background: #fff3ea; }
+.history-row span, .history-row small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.history-row span { font-size: 9px; }
+.history-row small { margin-top: 3px; color: #92999f; font-size: 7px; }
+@media (max-width: 330px) { .new-chat span { display: none; }.new-chat { width: 31px; padding: 0; } }
