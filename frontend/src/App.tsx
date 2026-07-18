@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { FormEvent, KeyboardEvent } from 'react'
 import { sendChatRequest, type SourceItem } from './services/chatApi'
 import SourceCard from './components/SourceCard'
+import ManagerPanel from './components/ManagerPanel'
 import './App.css'
 
 const Icon = ({ name }: { name: 'bell' | 'history' | 'paperclip' | 'arrow' | 'calendar' }) => {
@@ -25,6 +26,7 @@ const SESSION_KEY = 'compliance-ai-session'
 const HISTORY_KEY = 'compliance-ai-history'
 const WORKSPACE_KEY = 'compliance-ai-workspace'
 const NOTIFICATIONS_KEY = 'compliance-ai-notifications'
+const AVATAR_KEY = 'compliance-ai-avatar'
 type AccountRole = 'manager' | 'employee'
 
 const readSessionRole = (): AccountRole | null => {
@@ -143,6 +145,7 @@ type AppNotification = {
   kind: 'success' | 'warning' | 'error'
   createdAt: string
   read: boolean
+  source: 'manager'
 }
 
 const loadNotifications = (): AppNotification[] => {
@@ -156,7 +159,7 @@ const loadNotifications = (): AppNotification[] => {
       const value = item as Partial<AppNotification>
       return typeof value.id === 'number' && typeof value.title === 'string'
         && typeof value.message === 'string' && typeof value.createdAt === 'string'
-        && typeof value.read === 'boolean'
+        && typeof value.read === 'boolean' && value.source === 'manager'
         && (value.kind === 'success' || value.kind === 'warning' || value.kind === 'error')
     })
   } catch {
@@ -210,11 +213,17 @@ function App() {
   const [isPasswordFormOpen, setIsPasswordFormOpen] = useState(false)
   const [displayName, setDisplayName] = useState('FB: SnooAI')
   const [username, setUsername] = useState('eacuncsowe')
+  const [avatarUrl, setAvatarUrl] = useState(() => window.localStorage.getItem(AVATAR_KEY) ?? '')
+  const [avatarError, setAvatarError] = useState('')
   const [isHistoryOpen, setIsHistoryOpen] = useState(false)
   const [chatHistory, setChatHistory] = useState<ConversationEntry[]>([])
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false)
   const [notifications, setNotifications] = useState<AppNotification[]>(loadNotifications)
+  const [isManagerArea, setIsManagerArea] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
+  const avatarInput = useRef<HTMLInputElement>(null)
+  const homeRef = useRef<HTMLElement>(null)
+  const promptInputRef = useRef<HTMLTextAreaElement>(null)
 
   const navigate = (path: '/login' | '/chatbot') => {
     window.history.pushState({}, '', path)
@@ -290,14 +299,6 @@ function App() {
     saveHistory([])
   }
 
-  const addNotification = (notification: Omit<AppNotification, 'id' | 'createdAt' | 'read'>) => {
-    setNotifications((current) => {
-      const next = [...current, { ...notification, id: Date.now(), createdAt: new Date().toISOString(), read: false }].slice(-50)
-      saveNotifications(next)
-      return next
-    })
-  }
-
   const markAllNotificationsRead = () => {
     setNotifications((current) => {
       const next = current.map((item) => ({ ...item, read: true }))
@@ -319,6 +320,15 @@ function App() {
     saveNotifications([])
   }
 
+  const publishManagerNotification = (title: string, message: string, kind: AppNotification['kind'] = 'success') => {
+    setNotifications((current) => {
+      const notification: AppNotification = { id: Date.now(), title, message, kind, createdAt: new Date().toISOString(), read: false, source: 'manager' }
+      const next = [...current, notification].slice(-50)
+      saveNotifications(next)
+      return next
+    })
+  }
+
   const startNewChat = () => {
     setQuestion('')
     setLastQuestion('')
@@ -330,6 +340,43 @@ function App() {
     setLatencyMs(null)
     setError('')
     setAsOf(getLocalIsoDate())
+    window.requestAnimationFrame(() => {
+      homeRef.current?.scrollTo({ top: 0 })
+      if (promptInputRef.current) promptInputRef.current.style.height = 'auto'
+    })
+  }
+
+  const changeAvatar = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    if (!['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(file.type)) {
+      setAvatarError('Chỉ hỗ trợ ảnh JPG, PNG, WEBP hoặc GIF.')
+      return
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      setAvatarError('Ảnh đại diện không được vượt quá 2 MB.')
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = () => {
+      if (typeof reader.result !== 'string') return
+      try {
+        window.localStorage.setItem(AVATAR_KEY, reader.result)
+        setAvatarUrl(reader.result)
+        setAvatarError('')
+      } catch {
+        setAvatarError('Không thể lưu ảnh. Vui lòng chọn ảnh có dung lượng nhỏ hơn.')
+      }
+    }
+    reader.onerror = () => setAvatarError('Không thể đọc tệp ảnh đã chọn.')
+    reader.readAsDataURL(file)
+  }
+
+  const removeAvatar = () => {
+    window.localStorage.removeItem(AVATAR_KEY)
+    setAvatarUrl('')
+    setAvatarError('')
   }
 
   useEffect(() => {
@@ -342,6 +389,16 @@ function App() {
   useEffect(() => {
     const history = loadHistory()
     setChatHistory(history)
+    homeRef.current?.scrollTo({ top: 0 })
+  }, [])
+
+  useEffect(() => {
+    // Chỉ đồng bộ thông báo được phát sinh từ thao tác cập nhật của quản lý.
+    const syncManagerNotifications = (event: StorageEvent) => {
+      if (event.key === NOTIFICATIONS_KEY) setNotifications(loadNotifications())
+    }
+    window.addEventListener('storage', syncManagerNotifications)
+    return () => window.removeEventListener('storage', syncManagerNotifications)
   }, [])
 
   useEffect(() => {
@@ -372,6 +429,9 @@ function App() {
       const result = await sendChatRequest(value, { asOf, audience, mode: 'system' })
       setAnswer(result.answer)
       setQuestion('')
+      window.requestAnimationFrame(() => {
+        if (promptInputRef.current) promptInputRef.current.style.height = 'auto'
+      })
       setSources(result.sources)
       setConflictWarning(result.conflictWarning ?? null)
       setRequestId(result.requestId ?? null)
@@ -381,11 +441,6 @@ function App() {
         conflictWarning: result.conflictWarning ?? null, requestId: result.requestId ?? null,
         latencyMs: result.latencyMs ?? null, createdAt: new Date().toISOString(), asOf, audience,
       })
-      if (result.conflictWarning?.trim()) {
-        addNotification({ title: 'Phát hiện mâu thuẫn', message: `Câu hỏi “${value}” có quy định cần chú ý.`, kind: 'warning' })
-      } else {
-        addNotification({ title: 'Tra cứu hoàn tất', message: `Đã xử lý câu hỏi “${value}”.`, kind: 'success' })
-      }
     } catch (e) {
       const message = e instanceof Error ? e.message : 'Đã xảy ra lỗi.'
       setError(message)
@@ -394,7 +449,6 @@ function App() {
         conflictWarning: null, requestId: null, latencyMs: null,
         createdAt: new Date().toISOString(), asOf, audience,
       })
-      addNotification({ title: 'Tra cứu thất bại', message, kind: 'error' })
     } finally { setIsLoading(false) }
   }
 
@@ -403,6 +457,12 @@ function App() {
       event.preventDefault()
       void submit()
     }
+  }
+
+  const resizePrompt = (element: HTMLTextAreaElement) => {
+    element.style.height = 'auto'
+    element.style.height = `${Math.min(element.scrollHeight, 180)}px`
+    element.style.overflowY = element.scrollHeight > 180 ? 'auto' : 'hidden'
   }
 
   if (!isAuthenticated) {
@@ -470,10 +530,11 @@ function App() {
   }
 
   return (
-    <div className={`app-shell theme-${theme} font-${fontSize}`}>
+    <div className={`app-shell theme-${theme} font-${fontSize} ${audience === 'manager' && isManagerArea ? 'manager-active' : ''}`}>
       <header className="topbar">
         <a className="brand" href="#">Sovereign Compliance AI</a>
         <div className="header-actions">
+          {audience === 'manager' && <div className="area-switch" role="group" aria-label="Chuyển khu vực"><button className={!isManagerArea ? 'active' : ''} type="button" onClick={() => setIsManagerArea(false)}>Chatbot</button><button className={isManagerArea ? 'active' : ''} type="button" onClick={() => setIsManagerArea(true)}>Quản trị</button></div>}
           <span className={`connection-status account-role-status ${audience}`} title={`Loại tài khoản: ${audience === 'manager' ? 'Quản lý' : 'Nhân viên'}`}><i />{audience === 'manager' ? 'Quản lý' : 'Nhân viên'}</span>
           <div className="notification-menu">
             <button className="icon-button notification-button" type="button" aria-label={`Thông báo, ${notifications.filter((item) => !item.read).length} chưa đọc`} aria-expanded={isNotificationsOpen} onClick={() => setIsNotificationsOpen((open) => !open)}>
@@ -482,7 +543,7 @@ function App() {
             </button>
             {isNotificationsOpen && <section className="notification-panel" aria-label="Danh sách thông báo">
               <header><div><h2>Thông báo</h2><p>{notifications.filter((item) => !item.read).length} chưa đọc</p></div><button type="button" onClick={markAllNotificationsRead} disabled={!notifications.some((item) => !item.read)}>Đánh dấu đã đọc</button></header>
-              {notifications.length === 0 ? <div className="notification-empty"><Icon name="bell" /><strong>Chưa có thông báo</strong><p>Các cập nhật về lượt tra cứu sẽ xuất hiện tại đây.</p></div> : <div className="notification-list">
+              {notifications.length === 0 ? <div className="notification-empty"><Icon name="bell" /><strong>Chưa có thông báo</strong><p>Khi quản lý cập nhật nội dung mới, thông báo sẽ xuất hiện tại đây.</p></div> : <div className="notification-list">
                 {[...notifications].reverse().map((item) => <article className={`notification-item ${item.kind} ${item.read ? 'read' : 'unread'}`} key={item.id}>
                   <i className="notification-dot" />
                   <div><strong>{item.title}</strong><p>{item.message}</p><small>{getRelativeTime(new Date(item.createdAt))}</small></div>
@@ -494,7 +555,7 @@ function App() {
           </div>
           <div className="account-menu">
             <span className="account-name">{displayName}</span>
-            <button className="avatar" aria-label="Mở menu tài khoản" aria-haspopup="menu"><span>AI</span></button>
+            <button className={`avatar ${avatarUrl ? 'has-image' : ''}`} aria-label="Mở menu tài khoản" aria-haspopup="menu">{avatarUrl ? <img src={avatarUrl} alt="Ảnh đại diện" /> : <span>AI</span>}</button>
             <div className="account-dropdown" role="menu">
               <button type="button" role="menuitem" onClick={() => setIsProfileOpen(true)}>
                 <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
@@ -509,7 +570,7 @@ function App() {
         </div>
       </header>
 
-      <main className="home">
+      {audience === 'manager' && isManagerArea ? <main className="home manager-home"><ManagerPanel notify={publishManagerNotification} /></main> : <main className="home" ref={homeRef}>
         <section className={`hero ${isLoading || answer || error ? 'has-result' : ''}`}>
           {!isLoading && !answer && !error && <h1>Chào bạn, tôi có thể giúp gì cho<br />{' '}nghiệp vụ của bạn hôm nay?</h1>}
           <div className="query-options">
@@ -542,7 +603,7 @@ function App() {
           </>
           </div>}
           <form className="prompt-box" onSubmit={submit}>
-            <textarea aria-label="Câu hỏi nghiệp vụ" value={question} onChange={(e) => setQuestion(e.target.value)} onKeyDown={onKeyDown} placeholder="Nhập câu hỏi hoặc mô tả tình huống nghiệp vụ..." />
+            <textarea ref={promptInputRef} rows={1} aria-label="Câu hỏi nghiệp vụ" value={question} onChange={(e) => { setQuestion(e.target.value); resizePrompt(e.target) }} onKeyDown={onKeyDown} placeholder="Nhập câu hỏi hoặc mô tả tình huống nghiệp vụ..." />
             <div className="prompt-tools">
               <div className="left-tools">
                 <button type="button" aria-label="Lịch sử giao dịch" title="Lịch sử giao dịch" onClick={() => setIsHistoryOpen(true)}><Icon name="history" /></button>
@@ -556,11 +617,7 @@ function App() {
           </form>
           <input ref={fileInput} type="file" hidden />
         </section>
-      </main>
-
-      <footer>
-        <nav><a href="#privacy">Chính sách bảo mật</a><a href="#terms">Điều khoản dịch vụ</a></nav>
-      </footer>
+      </main>}
 
       {isHistoryOpen && (
         <div className="modal-backdrop history-backdrop" role="presentation" onMouseDown={(event) => {
@@ -602,11 +659,14 @@ function App() {
             <h2 id="profile-title">Edit profile</h2>
             <form onSubmit={(event) => { event.preventDefault(); setIsProfileOpen(false) }}>
               <div className="profile-avatar-wrap">
-                <div className="profile-avatar">FS</div>
-                <button className="camera-button" type="button" aria-label="Thay đổi ảnh đại diện">
+                <div className={`profile-avatar ${avatarUrl ? 'has-image' : ''}`}>{avatarUrl ? <img src={avatarUrl} alt="Ảnh đại diện hiện tại" /> : 'FS'}</div>
+                <button className="camera-button" type="button" aria-label="Thay đổi ảnh đại diện" onClick={() => avatarInput.current?.click()}>
                   <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-1-2h-4L9 5H5a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-4Z"/><circle cx="12" cy="12" r="3"/></svg>
                 </button>
+                <input ref={avatarInput} type="file" accept="image/jpeg,image/png,image/webp,image/gif" hidden onChange={changeAvatar} />
               </div>
+              <div className="avatar-controls"><button type="button" onClick={() => avatarInput.current?.click()}>Chọn ảnh</button>{avatarUrl && <button className="remove-avatar" type="button" onClick={removeAvatar}>Xóa ảnh</button>}</div>
+              {avatarError && <p className="avatar-error" role="alert">{avatarError}</p>}
 
               <label className="profile-field">
                 <span>Display name</span>
