@@ -77,3 +77,12 @@ context: []
 
 **Manual checks:**
 - Mở tab Benchmark, hỏi "tỷ lệ an toàn vốn tối thiểu?" → cột trái (RAG thường) dính 8%/2 giá trị, cột phải (Copilot) 9% + cảnh báo; chỗ khác biệt được tô.
+
+
+chia nhỏ task phần up file trên web:
+1. làm sao để upload nhiều file cùng lúc?
+2. làm sao để tách file thành nhiều clause? mỗi clause có số thứ tự, tên file, version, thời gian
+3. chưa cần lưu vào db
+4. phân tích những thông tin vừa mới up lên
+- làm thế nào để phân tích, dùng công cụ, thuật toán nào, RAG thông thường có khác j ko khi up file tĩnh như này -> liệu có phải do up nhiều file nhưng vì RAG chỉ tìm kiếm mẫu gần nhất do đó, vẫn dính lỗi khi có nhiều thông tư mà đã qua sửa đổi-> dùng RAG nâng cao
+- 

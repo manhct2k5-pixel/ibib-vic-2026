@@ -17,12 +17,23 @@ from backend.api.models import Document, Clause, Edge, ClauseEmbedding, StagingE
 from backend.ingest.extractor import process_pdf_ingestion
 from backend.kb.vector_helper import get_text_embedding
 from backend.pipeline.consolidate import consolidate_document
+from backend.pipeline.session_analyze import (
+    build_session_analysis,
+    build_session_consolidated,
+)
 from backend.kb.session_store import (
     SessionClause,
+    SessionDoc,
+    SessionRelation,
     get_session_clauses,
+    get_session_docs,
+    get_session_relations,
     put_session_clauses,
+    put_session_doc,
+    remove_session_doc,
 )
-from backend.ingest.pdf_ingest import pdf_to_session_clauses
+from backend.ingest.pdf_ingest import clauses_from_text, extract_text
+from backend.ingest.doc_analyze import analyze_document, quick_metadata
 from backend.providers.llm import get_llm
 
 # Initialize database tables on startup
@@ -519,28 +530,148 @@ async def session_upload_pdf(
     file: UploadFile = File(...),
     docCode: str = Form(""),
 ):
-    """PDF số → cắt theo Điều + LLM trích hiệu lực → clause phiên (FR-18, AD-13)."""
+    """PDF số → phân tích (metadata + quan hệ liên-văn-bản) + cắt Điều → clause
+    phiên (FR-17/FR-18, AD-13). Dùng dữ liệu TỪ FILE UPLOAD, không đụng DB."""
     if not sessionId:
         raise HTTPException(status_code=400, detail="Thiếu sessionId.")
     data = await file.read()
-    dc = docCode or (file.filename or "TAILIEU").rsplit(".", 1)[0]
-    clauses, meta = pdf_to_session_clauses(data, dc, get_llm())
+    filename = file.filename or "TAILIEU.pdf"
+    text = extract_text(data)
+
+    # NHANH: chỉ cắt Điều + metadata regex, KHÔNG gọi LLM. Phân tích quan hệ (LLM)
+    # để dành cho lúc gửi chat qua POST /api/session/analyze.
+    meta = quick_metadata(text, filename)
+    dc = docCode or meta["doc_code"]
+    eff = meta["effective_date"] or date.today()
+
+    clauses = clauses_from_text(text, dc, eff)
     if not clauses:
         raise HTTPException(
             status_code=422,
             detail=(
-                "Không trích được điều khoản. PDF có thể là bản scan/ảnh "
-                "hoặc không có cấu trúc 'Điều N'."
+                "Không trích được điều khoản. PDF có thể là bản scan/ảnh, sai mã "
+                "font, hoặc không có cấu trúc 'Điều N'."
             ),
         )
     total = put_session_clauses(sessionId, clauses)
+
+    doc = SessionDoc(
+        doc_code=dc,
+        title=dc,  # tiêu đề đầy đủ sẽ có sau khi phân tích LLM
+        doc_type="",
+        issuer="",
+        issue_date=None,
+        effective_date=eff,
+        num_clauses=len(clauses),
+        filename=filename,
+        raw_text=meta["head"],
+        analyzed=False,
+    )
+    put_session_doc(sessionId, doc, [])
+
     return {
         "sessionId": sessionId,
         "docCode": dc,
         "added": len(clauses),
         "sessionClauses": total,
-        **meta,
+        "analyzed": False,
+        "chars": len(text),
     }
+
+
+def _run_analysis(sessionId: str) -> dict:
+    """Phân tích LLM TRỄ: doc nào chưa analyzed thì gọi LLM trích quan hệ, rồi dựng
+    bản đồ. Gọi lúc gửi chat để 'ấn Gửi mới phân tích'."""
+    docs = get_session_docs(sessionId)
+    pending = [d for d in docs if not d.analyzed and d.raw_text]
+    if pending:
+        llm = get_llm()
+        for d in pending:
+            res = analyze_document(d.raw_text, d.filename, llm)
+            d.title = res["title"] or d.doc_code
+            d.doc_type = res["doc_type"]
+            d.issuer = res["issuer"]
+            if res["effective_date"]:
+                d.effective_date = res["effective_date"]
+            d.analyzed = True
+            relations = [
+                SessionRelation(
+                    from_doc=d.doc_code,
+                    to_doc=r["target_doc"],
+                    rel_type=r["type"],
+                    from_article=None,
+                    to_article=r["target_article"],
+                    note=r["note"],
+                )
+                for r in res["relations"]
+            ]
+            put_session_doc(sessionId, d, relations)
+    docs = get_session_docs(sessionId)
+    relations = get_session_relations(sessionId)
+    result = build_session_analysis(docs, relations)
+    result["sessionId"] = sessionId
+    return result
+
+
+@app.post("/api/session/analyze")
+def session_analyze(sessionId: str = ""):
+    """Chạy phân tích LLM (trích quan hệ) cho tài liệu chưa phân tích, trả bản đồ
+    quan hệ + thứ tự đọc + hướng dẫn (FR-17). Gọi khi người dùng gửi câu hỏi."""
+    if not sessionId:
+        raise HTTPException(status_code=400, detail="Thiếu sessionId.")
+    return _run_analysis(sessionId)
+
+
+@app.get("/api/session/analysis")
+def session_analysis(sessionId: str = ""):
+    """Đọc bản đồ đã phân tích (KHÔNG chạy LLM). Dùng để hiển thị lại."""
+    if not sessionId:
+        raise HTTPException(status_code=400, detail="Thiếu sessionId.")
+    docs = get_session_docs(sessionId)
+    relations = get_session_relations(sessionId)
+    result = build_session_analysis(docs, relations)
+    result["sessionId"] = sessionId
+    return result
+
+
+@app.get("/api/session/consolidated")
+def session_consolidated(sessionId: str = "", asOf: Optional[str] = None):
+    """MỘT văn bản hợp nhất TỔNG HỢP quanh văn bản nền của phiên (FR-17): gộp các
+    sửa đổi từ những tài liệu khác trong phiên vào bản gốc. KHÔNG chạy LLM."""
+    if not sessionId:
+        raise HTTPException(status_code=400, detail="Thiếu sessionId.")
+    try:
+        as_of = date.fromisoformat(asOf) if asOf else date.today()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="asOf phải theo YYYY-MM-DD.")
+    docs = get_session_docs(sessionId)
+    relations = get_session_relations(sessionId)
+    clauses = get_session_clauses(sessionId)
+    result = build_session_consolidated(docs, relations, clauses, as_of)
+    if not result.get("docCode"):
+        raise HTTPException(
+            status_code=404, detail="Chưa có tài liệu để hợp nhất trong phiên."
+        )
+    result["sessionId"] = sessionId
+    return result
+
+
+@app.delete("/api/session/doc")
+def session_remove_doc(sessionId: str = "", docCode: str = ""):
+    """Xoá 1 tài liệu đã đính kèm khỏi phiên (metadata + clause + quan hệ)."""
+    if not sessionId or not docCode:
+        raise HTTPException(status_code=400, detail="Thiếu sessionId hoặc docCode.")
+    removed = remove_session_doc(sessionId, docCode)
+    if not removed:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Không tìm thấy tài liệu '{docCode}' trong phiên.",
+        )
+    docs = get_session_docs(sessionId)
+    relations = get_session_relations(sessionId)
+    analysis = build_session_analysis(docs, relations)
+    analysis["sessionId"] = sessionId
+    return {"removed": docCode, "remaining": len(docs), "analysis": analysis}
 
 if __name__ == "__main__":
     import uvicorn

@@ -10,6 +10,9 @@ type Props = {
   audience?: 'employee' | 'customer'
   sessionId?: string
   onClose?: () => void
+  data?: ConsolidatedDoc // nếu có: dùng trực tiếp, KHÔNG fetch
+  label?: string // tiêu đề thay cho "Văn bản hợp nhất: {docCode}"
+  mergedFrom?: string[] // các văn bản đã gộp vào bản nền
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -20,12 +23,13 @@ const STATUS_LABEL: Record<string, string> = {
 }
 
 // Văn bản hợp nhất inline trong chat (FR-17, FR-19): 1 văn bản gốc + mọi sửa đổi.
-function ConsolidatedDocView({ docCode, asOf, audience, sessionId, onClose }: Props) {
-  const [doc, setDoc] = useState<ConsolidatedDoc | null>(null)
+function ConsolidatedDocView({ docCode, asOf, audience, sessionId, onClose, data, label, mergedFrom }: Props) {
+  const [doc, setDoc] = useState<ConsolidatedDoc | null>(data ?? null)
   const [error, setError] = useState('')
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(!data)
 
   useEffect(() => {
+    if (data) { setDoc(data); setLoading(false); setError(''); return }
     let alive = true
     setLoading(true)
     setError('')
@@ -42,14 +46,14 @@ function ConsolidatedDocView({ docCode, asOf, audience, sessionId, onClose }: Pr
     return () => {
       alive = false
     }
-  }, [docCode, asOf, audience, sessionId])
+  }, [docCode, asOf, audience, sessionId, data])
 
   return (
     <section className="consolidated-doc" aria-label={`Văn bản hợp nhất ${docCode}`}>
       <header className="consolidated-head">
         <div>
-          <strong>Văn bản hợp nhất: {docCode}</strong>
-          {doc && <span className="consolidated-sub">{doc.title} · tại ngày {doc.asOf}</span>}
+          <strong>{label ?? `Văn bản hợp nhất: ${docCode}`}</strong>
+          {doc && <span className="consolidated-sub">{doc.title} · tại ngày {doc.asOf}{mergedFrom && mergedFrom.length > 0 ? ` · đã gộp: ${mergedFrom.join(', ')}` : ''}</span>}
         </div>
         {onClose && (
           <button type="button" className="consolidated-close" onClick={onClose} aria-label="Đóng">

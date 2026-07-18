@@ -28,13 +28,74 @@ _EFFECT_RE = re.compile(r"hiệu lực[^.]{0,80}", re.IGNORECASE)
 _MAX_LLM_CHARS = 6000
 
 
-def extract_text(pdf_bytes: bytes) -> str:
-    """Trích toàn bộ text từ PDF số (pypdf). PDF scan (ảnh) sẽ ra rỗng."""
+_OCR_MAX_PAGES = 60  # chặn trần thời gian OCR (mỗi trang ~2-5s)
+
+
+def _extract_text_native(pdf_bytes: bytes) -> str:
+    """Trích text từ lớp text của PDF (pypdf). PDF scan/font hỏng sẽ ra rỗng/mojibake."""
     from pypdf import PdfReader
 
     reader = PdfReader(io.BytesIO(pdf_bytes))
     parts = [(page.extract_text() or "") for page in reader.pages]
     return "\n".join(parts)
+
+
+_OCR_SCALE = 2.0  # đủ nét cho tesseract, nhanh hơn 2.5
+_OCR_WORKERS = 4  # OCR song song nhiều trang (tesseract chạy tiến trình riêng)
+
+
+def _ocr_one_page(args) -> tuple[int, str]:
+    i, img = args
+    import pytesseract
+
+    try:
+        return i, pytesseract.image_to_string(img, lang="vie")
+    except Exception:  # noqa: BLE001 — 1 trang lỗi không chặn cả file
+        return i, ""
+
+
+def _ocr_pdf(pdf_bytes: bytes) -> str:
+    """OCR tiếng Việt SONG SONG: render trang → ảnh → tesseract (lang=vie).
+
+    Dùng khi lớp text hỏng (scan/font lỗi). Lỗi/thiếu tesseract → trả ''.
+    """
+    try:
+        import pypdfium2 as pdfium
+        import pytesseract  # noqa: F401 — kiểm tra có sẵn
+    except ImportError:
+        return ""
+    try:
+        pdf = pdfium.PdfDocument(pdf_bytes)
+    except Exception:  # noqa: BLE001 — PDF hỏng
+        return ""
+    from concurrent.futures import ThreadPoolExecutor
+
+    n = min(len(pdf), _OCR_MAX_PAGES)
+    # Render tuần tự (pdfium không thread-safe), OCR song song (tesseract subprocess)
+    imgs = []
+    for i in range(n):
+        try:
+            imgs.append((i, pdf[i].render(scale=_OCR_SCALE).to_pil()))
+        except Exception:  # noqa: BLE001
+            continue
+    results: dict[int, str] = {}
+    with ThreadPoolExecutor(max_workers=_OCR_WORKERS) as ex:
+        for i, txt in ex.map(_ocr_one_page, imgs):
+            results[i] = txt
+    return "\n".join(results[i] for i in sorted(results))
+
+
+def extract_text(pdf_bytes: bytes) -> str:
+    """Trích text PDF. Ưu tiên lớp text (nhanh); nếu không có cấu trúc 'Điều'
+    (scan/font hỏng) thì fallback OCR tiếng Việt."""
+    native = _extract_text_native(pdf_bytes)
+    if "Điều" in native or "ĐIỀU" in native:
+        return native
+    ocr = _ocr_pdf(pdf_bytes)
+    # OCR ra được 'Điều' → dùng OCR; nếu không, trả bản tốt hơn (dài hơn)
+    if "Điều" in ocr or len(ocr) > len(native):
+        return ocr
+    return native
 
 
 def split_into_clauses(text: str) -> list[dict]:
@@ -101,6 +162,27 @@ def extract_metadata(llm: LLMProvider, text: str) -> dict:
         eff = date.today()  # fallback: coi như đang hiệu lực
     title = meta.get("title") if isinstance(meta.get("title"), str) else None
     return {"effective_date": eff, "title": title}
+
+
+def clauses_from_text(text: str, doc_code: str, eff: date) -> list[SessionClause]:
+    """Cắt Điều từ text đã trích sẵn → SessionClause (dùng doc_code cho trước)."""
+    clauses: list[SessionClause] = []
+    for seg in split_into_clauses(text):
+        clauses.append(
+            SessionClause(
+                clause_id=f"{doc_code}/{seg['path']}",
+                doc_code=doc_code,
+                path=seg["path"],
+                text=seg["text"],
+                effective_date=eff,
+                expiry_date=None,
+                topic="",
+                visibility="public",
+                metric_value=None,
+                metric_unit=None,
+            )
+        )
+    return clauses
 
 
 def pdf_to_session_clauses(

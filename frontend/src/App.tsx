@@ -3,9 +3,10 @@ import type { FormEvent, KeyboardEvent } from 'react'
 import { sendChatRequest, type SourceItem } from './services/chatApi'
 import SourceCard from './components/SourceCard'
 import ManagerPanel from './components/ManagerPanel'
-import type { SessionUploadResult } from './services/sessionApi'
+import { analyzeSession, removeSessionDoc, getSessionConsolidated, type SessionUploadResult, type SessionAnalysis, type SessionConsolidated } from './services/sessionApi'
 import ConsolidatedDocView from './components/ConsolidatedDocView'
-import InlineUpload from './components/InlineUpload'
+import SessionAnalysisView from './components/SessionAnalysisView'
+import InlineUpload, { type UploadError } from './components/InlineUpload'
 import {
   addHistory,
   getBookmarks,
@@ -226,6 +227,13 @@ function App() {
   )
   const [consolidateDoc, setConsolidateDoc] = useState<string | null>(null)
   const [uploadInfo, setUploadInfo] = useState<SessionUploadResult | null>(null)
+  const [analysis, setAnalysis] = useState<SessionAnalysis | null>(null)
+  const [showAnalysis, setShowAnalysis] = useState(false)
+  const [mergedDoc, setMergedDoc] = useState<SessionConsolidated | null>(null)
+  const [uploadErrors, setUploadErrors] = useState<UploadError[]>([])
+  const [attachedDocs, setAttachedDocs] = useState<string[]>([])
+  const [uploadingFile, setUploadingFile] = useState<string | null>(null)
+  const abortControllerRef = useRef<AbortController | null>(null)
   const [history, setHistory] = useState<string[]>(() => getHistory())
   const [bookmarks, setBookmarks] = useState<string[]>(() => getBookmarks())
   const [isProfileOpen, setIsProfileOpen] = useState(false)
@@ -447,6 +455,12 @@ function App() {
     setAskedQuestion(value)
     setConsolidateDoc(null)
     setError(''); setAnswer(''); setSources([]); setConflictWarning(null); setRequestId(null); setLatencyMs(null); setIsLoading(true)
+    // Ấn Gửi mới phân tích tài liệu đính kèm (LLM trích quan hệ) — chạy song song.
+    if (attachedDocs.length > 0) {
+      void analyzeSession(sessionId)
+        .then((a) => { setAnalysis(a); setShowAnalysis(true) })
+        .catch(() => { /* phân tích lỗi — vẫn trả lời chat bình thường */ })
+    }
     try {
       const result = await sendChatRequest(value, { asOf, audience, mode: 'system', sessionId })
       setAnswer(result.answer)
@@ -480,9 +494,46 @@ function App() {
     void runQuery(question.trim())
   }
 
-  const onUploaded = (result: SessionUploadResult) => {
-    setUploadInfo(result)
-    setConsolidateDoc(result.docCode)
+  const onUploadComplete = (results: SessionUploadResult[], errors: UploadError[]) => {
+    setUploadErrors(errors)
+    if (results.length > 0) {
+      setUploadInfo(results[results.length - 1])
+      // Chỉ đính kèm — CHƯA phân tích. Phân tích chạy khi người dùng ấn Gửi.
+      setAttachedDocs((prev) => Array.from(new Set([...prev, ...results.map((r) => r.docCode)])))
+    }
+  }
+
+  const cancelUpload = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+      setUploadingFile(null)
+    }
+  }
+
+  const removeDoc = (docCode: string) => {
+    setAttachedDocs((prev) => prev.filter((c) => c !== docCode))
+    setMergedDoc(null)
+    if (uploadInfo?.docCode === docCode) setUploadInfo(null)
+    if (consolidateDoc === docCode) setConsolidateDoc(null)
+    void removeSessionDoc(sessionId, docCode)
+      .then((a) => {
+        setAnalysis(a)
+        if (a.documents.length === 0) setShowAnalysis(false)
+      })
+      .catch(() => { /* xoá lỗi — giữ nguyên trạng thái */ })
+  }
+
+  const openConsolidate = (docCode: string) => {
+    setShowAnalysis(false)
+    setMergedDoc(null)
+    setConsolidateDoc(docCode)
+  }
+
+  const openMergedConsolidated = () => {
+    setConsolidateDoc(null)
+    void getSessionConsolidated(sessionId, asOf)
+      .then((d) => setMergedDoc(d))
+      .catch(() => { /* lỗi hợp nhất — bỏ qua */ })
   }
 
   const onToggleBookmark = () => {
@@ -643,11 +694,63 @@ function App() {
           </>
           </div>}
           <form className="prompt-box" onSubmit={submit}>
+            {(attachedDocs.length > 0 || uploadingFile) && (
+              <div className="prompt-attachments">
+                {attachedDocs.map((dc) => (
+                  <div key={dc} className="prompt-attachment-card">
+                    <div className="attachment-file-icon">
+                      <svg viewBox="0 0 24 24" width="20" height="20">
+                        <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-4 4h2v2h-2V7zm-4 0h2v2h-2V7zm-4 0h2v2H7V7zm8 6H9v-2h6v2zm2 4H7v-2h10v2z" fill="#ea4335" />
+                      </svg>
+                    </div>
+                    <span className="attachment-file-name" title={dc}>{dc}</span>
+                    <button
+                      type="button"
+                      className="attachment-delete"
+                      onClick={() => removeDoc(dc)}
+                      aria-label={`Xoá ${dc}`}
+                      title={`Xoá ${dc}`}
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+                {uploadingFile && (
+                  <div className="prompt-attachment-card uploading">
+                    <div className="attachment-file-icon">
+                      <span className="spinner-mini" />
+                    </div>
+                    <span className="attachment-file-name" title={uploadingFile}>
+                      {uploadingFile}
+                    </span>
+                    <button
+                      type="button"
+                      className="attachment-delete"
+                      onClick={cancelUpload}
+                      aria-label="Hủy tải lên"
+                      title="Hủy tải lên"
+                    >
+                      ×
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
             <textarea ref={promptInputRef} rows={1} aria-label="Câu hỏi nghiệp vụ" value={question} onChange={(e) => { setQuestion(e.target.value); resizePrompt(e.target) }} onKeyDown={onKeyDown} placeholder="Nhập câu hỏi hoặc mô tả tình huống nghiệp vụ..." />
             <div className="prompt-tools">
               <div className="left-tools">
                 <button type="button" aria-label="Lịch sử giao dịch" title="Lịch sử giao dịch" onClick={() => setIsHistoryOpen(true)}><Icon name="history" /></button>
-                <InlineUpload sessionId={sessionId} onUploaded={onUploaded} />
+                <InlineUpload
+                  sessionId={sessionId}
+                  onComplete={onUploadComplete}
+                  onUploadStart={setUploadingFile}
+                  onUploadEnd={() => setUploadingFile(null)}
+                  onFileUploaded={(res) => {
+                    setUploadInfo(res)
+                    setAttachedDocs((prev) => Array.from(new Set([...prev, res.docCode])))
+                  }}
+                  abortControllerRef={abortControllerRef}
+                />
                 <button type="button" aria-label="Đánh dấu câu hỏi" title="Đánh dấu câu hỏi" onClick={onToggleBookmark} disabled={!askedQuestion} className={askedQuestion && isBookmarked(askedQuestion) ? 'pinned' : ''}>☆</button>
               </div>
               <div className="prompt-actions">
@@ -677,10 +780,18 @@ function App() {
             </div>
           )}
 
-          {(uploadInfo || docChips.length > 0) && <div className="consolidate-chips">
-            {uploadInfo && <button type="button" className="consolidate-chip attached" onClick={() => setConsolidateDoc(uploadInfo.docCode)}>Tệp vừa đính kèm: {uploadInfo.docCode}</button>}
+
+          {(uploadInfo || docChips.length > 0 || analysis) && <div className="consolidate-chips">
+            {analysis && analysis.documents.length > 0 && <button type="button" className={`consolidate-chip analysis ${showAnalysis ? 'active' : ''}`} onClick={() => { setShowAnalysis((v) => !v); setConsolidateDoc(null) }}>Bản đồ quan hệ &amp; hướng dẫn đọc ({analysis.documents.length})</button>}
+            {uploadInfo && <button type="button" className="consolidate-chip attached" onClick={() => openConsolidate(uploadInfo.docCode)}>Tệp vừa đính kèm: {uploadInfo.docCode}</button>}
             {docChips.map((docCode) => <button key={docCode} type="button" className={`consolidate-chip ${consolidateDoc === docCode ? 'active' : ''}`} onClick={() => setConsolidateDoc(consolidateDoc === docCode ? null : docCode)}>Văn bản hợp nhất: {docCode}</button>)}
           </div>}
+          {uploadErrors.length > 0 && <div className="upload-errors">
+            <div className="upload-errors-head"><strong>{uploadErrors.length} tệp chưa xử lý được</strong><button type="button" onClick={() => setUploadErrors([])} aria-label="Đóng">×</button></div>
+            {uploadErrors.map((e) => <div className="upload-error-row" key={e.name}><span className="ue-name">{e.name}</span><span className="ue-msg">{e.message}</span></div>)}
+          </div>}
+          {showAnalysis && analysis && <SessionAnalysisView analysis={analysis} onClose={() => setShowAnalysis(false)} onConsolidateMerged={openMergedConsolidated} onRemove={removeDoc} />}
+          {mergedDoc && <ConsolidatedDocView docCode={mergedDoc.docCode} data={mergedDoc} label={`Văn bản hợp nhất tổng hợp: ${mergedDoc.docCode}`} mergedFrom={mergedDoc.mergedFrom} onClose={() => setMergedDoc(null)} />}
           {consolidateDoc && <ConsolidatedDocView docCode={consolidateDoc} asOf={asOf} sessionId={sessionId} onClose={() => setConsolidateDoc(null)} />}
         </section>
       </main>}
