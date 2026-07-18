@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Sovereign Compliance AI",
+  "name": "IBIB",
   "version": "1.0.21",
   "description": "Trợ lý tra cứu tuân thủ ngay trên Chrome và Microsoft Edge.",
   "permissions": ["activeTab", "contextMenus", "sidePanel", "scripting", "storage"],
@@ -15,7 +15,7 @@
     }
   ],
   "action": {
-    "default_title": "Mở Sovereign Compliance AI",
+    "default_title": "Mở IBIB",
     "default_popup": "popup.html"
   },
   "side_panel": { "default_path": "sidepanel.html" },
