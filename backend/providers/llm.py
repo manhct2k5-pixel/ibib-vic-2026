@@ -43,13 +43,13 @@ def _base_url() -> str:
 
 
 class LLMProvider(Protocol):
-    def generate(self, system: str, prompt: str) -> str: ...
+    def generate(self, system: str, prompt: str, timeout: float | None = None) -> str: ...
 
 
 class MockLLM:
     """Trả câu trả lời tiếng Việt template từ prompt — không mạng, deterministic."""
 
-    def generate(self, system: str, prompt: str) -> str:
+    def generate(self, system: str, prompt: str, timeout: float | None = None) -> str:
         return (
             "[MockLLM — chạy không cần API key] Dựa trên các điều khoản còn hiệu lực "
             "được cung cấp:\n" + prompt.strip()
@@ -61,7 +61,7 @@ class AnthropicLLM:
         self._api_key = api_key
         self._model = model
 
-    def generate(self, system: str, prompt: str) -> str:
+    def generate(self, system: str, prompt: str, timeout: float | None = None) -> str:
         resp = httpx.post(
             ANTHROPIC_URL,
             headers={
@@ -75,7 +75,7 @@ class AnthropicLLM:
                 "system": system,
                 "messages": [{"role": "user", "content": prompt}],
             },
-            timeout=REQUEST_TIMEOUT_S,
+            timeout=timeout or REQUEST_TIMEOUT_S,
         )
         resp.raise_for_status()
         return resp.json()["content"][0]["text"]
@@ -91,7 +91,7 @@ class OpenAICompatLLM:
         self._model = model
         self._base_url = (base_url or _base_url()).rstrip("/")
 
-    def generate(self, system: str, prompt: str) -> str:
+    def generate(self, system: str, prompt: str, timeout: float | None = None) -> str:
         # Chịu được base_url có sẵn '/chat/completions' hay chỉ '/v1'
         url = self._base_url
         if not url.endswith("/chat/completions"):
@@ -110,7 +110,7 @@ class OpenAICompatLLM:
                 ],
                 "stream": False,
             },
-            timeout=REQUEST_TIMEOUT_S,
+            timeout=timeout or REQUEST_TIMEOUT_S,
         )
         resp.raise_for_status()
         return resp.json()["choices"][0]["message"]["content"]

@@ -1,5 +1,13 @@
 /* Style cho các feature port Epic 2/7 (inline trong chat) — theo accent cam #ff781d. */
 
+/* Chống lỗi chữ 'xuống dòng dọc': token dài (công thức, dấu -, /) chỉ ngắt khi
+   thật sự tràn, không xếp từng ký tự một dòng. */
+.formatted-answer, .formatted-answer p, .assistant-message,
+.source-body p, .section-text, .analysis-guide, .amend-text {
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+
 /* Ngày hiệu lực: input thay cho text tĩnh */
 .date-picker input[type='date'] {
   border: 0;
@@ -105,3 +113,175 @@
 .theme-dark .consolidated-section { background: #23272b; border-color: #3b4044; }
 .theme-dark .section-text, .theme-dark .amend-text { color: #d8dcdf; }
 .theme-dark .qa-chip { background: #272b2f; border-color: #454a4f; color: #c8cdd1; }
+
+/* ── Phân tích bộ tài liệu (bản đồ quan hệ + hướng dẫn đọc) ── */
+.consolidate-chip.analysis { border-color: #7c3aed; background: #f3ecff; color: #6d28d9; }
+.consolidate-chip.analysis:hover, .consolidate-chip.analysis.active { background: #7c3aed; color: #fff; }
+
+.analysis-view {
+  margin-top: 12px; padding: 12px; border: 1px solid #e6e8ea; border-radius: 9px;
+  background: #fff; box-shadow: 0 4px 12px rgba(26,35,44,.05);
+}
+.analysis-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.analysis-head strong { font-size: 13px; color: #141a20; }
+.analysis-close { border: 0; background: transparent; font-size: 18px; line-height: 1; color: #98a0a8; cursor: pointer; }
+
+.analysis-guide { font-size: 12px; color: #384049; line-height: 1.55; margin-bottom: 10px; }
+.analysis-guide p { margin: 4px 0; }
+.guide-bullet { display: flex; gap: 6px; align-items: flex-start; margin: 3px 0; }
+.guide-bullet span { color: #7c3aed; font-weight: 700; }
+.guide-bullet p { margin: 0; }
+
+.analysis-graph { border: 1px solid #eef0f2; border-radius: 8px; padding: 6px; overflow: hidden; background: #fbfcfd; }
+.analysis-legend { display: flex; flex-wrap: wrap; gap: 10px; padding: 6px 4px 2px; }
+.legend-item { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; color: #59616a; }
+.legend-item i { width: 14px; height: 3px; border-radius: 2px; display: inline-block; }
+
+.analysis-reading { margin-top: 10px; }
+.analysis-reading h4 { margin: 0 0 6px; font-size: 12px; color: #141a20; }
+.analysis-reading ol { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
+.reading-item { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.reading-item > div { display: flex; flex-direction: column; }
+.reading-item strong { font-size: 12px; color: #141a20; }
+.reading-role { font-size: 10px; color: #7c3aed; font-weight: 600; }
+.reading-title { font-size: 10px; color: #59616a; }
+.reading-open { align-self: center; padding: 3px 9px; border: 1px solid #ff781d; border-radius: 12px; background: #fff3ea; color: #c2560f; font-size: 10px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.reading-open:hover { background: #ff781d; color: #fff; }
+.reading-item.role-consolidated strong { color: #c2560f; }
+
+.merged-consolidate-btn { display: block; width: 100%; margin: 4px 0 10px; padding: 9px 12px; border: 1px solid #ff781d; border-radius: 8px; background: #ff781d; color: #fff; font-size: 12px; font-weight: 700; cursor: pointer; }
+.merged-consolidate-btn:hover { background: #e56a12; }
+
+.theme-dark .analysis-view { background: #24282b; border-color: #3b4044; }
+.theme-dark .analysis-head strong, .theme-dark .analysis-reading h4, .theme-dark .reading-item strong { color: #f2f3f4; }
+.theme-dark .analysis-guide { color: #d8dcdf; }
+.theme-dark .analysis-graph { background: #1f2225; border-color: #3b4044; }
+
+/* Danh sách tài liệu đã đính kèm (có nút xoá) */
+.analysis-docs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.doc-pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 6px 4px 10px; border: 1px solid #e6e8ea; border-radius: 14px; background: #fbfcfd; font-size: 11px; }
+.doc-pill b { color: #141a20; }
+.doc-pill.role-consolidated { border-color: #f9c99a; background: #fff6ee; }
+.doc-pill-meta { color: #59616a; font-size: 10px; }
+.doc-remove { width: 16px; height: 16px; display: grid; place-items: center; border: 0; border-radius: 50%; background: #f1d6d4; color: #b42318; font-size: 12px; line-height: 1; cursor: pointer; }
+.doc-remove:hover { background: #d81e28; color: #fff; }
+
+/* Báo lỗi các tệp không xử lý được */
+.upload-errors { margin-top: 10px; padding: 9px 11px; border: 1px solid #ffcaa0; border-radius: 8px; background: #fff7ef; }
+.upload-errors-head { display: flex; justify-content: space-between; align-items: center; }
+.upload-errors-head strong { font-size: 11px; color: #9a3f00; }
+.upload-errors-head button { border: 0; background: transparent; font-size: 15px; color: #98a0a8; cursor: pointer; }
+.upload-error-row { display: flex; gap: 8px; font-size: 10px; margin-top: 4px; }
+.ue-name { font-weight: 700; color: #7a3b00; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ue-msg { color: #59616a; }
+
+.theme-dark .doc-pill { background: #23272b; border-color: #3b4044; }
+.theme-dark .doc-pill b { color: #f2f3f4; }
+
+/* Thanh tài liệu đã đính kèm (trước khi phân tích) */
+.attached-bar { margin-top: 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 11px; border: 1px dashed #c9b6ff; border-radius: 8px; background: #f7f3ff; }
+.attached-label { font-size: 11px; font-weight: 600; color: #6d28d9; }
+.attached-pills { display: flex; flex-wrap: wrap; gap: 6px; }
+.attached-pill { display: inline-flex; align-items: center; gap: 5px; padding: 3px 5px 3px 9px; border: 1px solid #d9cbf7; border-radius: 12px; background: #fff; font-size: 11px; }
+.attached-pill b { color: #4c1d95; }
+.attached-pill button { width: 15px; height: 15px; display: grid; place-items: center; border: 0; border-radius: 50%; background: #ede4ff; color: #6d28d9; font-size: 11px; line-height: 1; cursor: pointer; }
+.attached-pill button:hover { background: #7c3aed; color: #fff; }
+.theme-dark .attached-bar { background: #241f33; border-color: #4c3f6b; }
+.theme-dark .attached-pill { background: #23272b; border-color: #4c3f6b; }
+.theme-dark .attached-pill b { color: #d8caff; }
+
+/* Gemini-style File Attachments inside prompt-box */
+.prompt-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.prompt-attachment-card {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: #f0f4f9;
+  border: 1px solid #e0e4e9;
+  max-width: 220px;
+  transition: all 0.2s ease;
+}
+
+.theme-dark .prompt-attachment-card {
+  background: #1e2022;
+  border-color: #2a2c2e;
+}
+
+.prompt-attachment-card.uploading {
+  opacity: 0.7;
+}
+
+.attachment-file-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.attachment-file-name {
+  font-size: 11px;
+  font-weight: 500;
+  color: #1f1f1f;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 140px;
+}
+
+.theme-dark .attachment-file-name {
+  color: #e3e3e3;
+}
+
+.attachment-delete {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #1f1f1f;
+  color: #fff;
+  border: none;
+  font-size: 10px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.prompt-attachment-card:hover .attachment-delete {
+  opacity: 1;
+}
+
+.attachment-delete:hover {
+  transform: scale(1.1);
+  background: #ea4335;
+}
+
+.spinner-mini {
+  width: 14px;
+  height: 14px;
+  border: 2px solid #ff781d;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin-mini 0.8s linear infinite;
+  display: inline-block;
+}
+
+@keyframes spin-mini {
+  to { transform: rotate(360deg); }
+}
+

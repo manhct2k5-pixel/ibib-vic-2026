@@ -1,39 +1,61 @@
 import { useRef, useState } from 'react'
 import { uploadSessionPdf, type SessionUploadResult } from '../services/sessionApi'
 
+export type UploadError = { name: string; message: string }
+
 type Props = {
   sessionId: string
-  onUploaded: (result: SessionUploadResult) => void
+  onComplete: (results: SessionUploadResult[], errors: UploadError[]) => void
+  onUploadStart?: (fileName: string) => void
+  onUploadEnd?: () => void
+  onFileUploaded?: (result: SessionUploadResult) => void
+  abortControllerRef?: React.MutableRefObject<AbortController | null>
 }
 
-// Đính kèm PDF theo phiên (FR-18, AD-13): chọn file → backend cắt Điều + LLM trích
-// hiệu lực → clause phiên (không persist). Báo số điều khoản nạp được.
-function InlineUpload({ sessionId, onUploaded }: Props) {
+// Đính kèm nhiều PDF theo phiên (FR-17/FR-18, AD-13): chọn file → backend phân
+// tích (metadata + quan hệ) + cắt Điều → clause phiên (không persist). Upload tuần
+// tự, báo tiến độ, gom lỗi từng file và gọi onComplete MỘT LẦN khi xong hết.
+function InlineUpload({ sessionId, onComplete, onUploadStart, onUploadEnd, onFileUploaded, abortControllerRef }: Props) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [status, setStatus] = useState('')
-  const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
 
   const onPick = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    if (!file) return
+    const files = Array.from(event.target.files ?? [])
+    if (inputRef.current) inputRef.current.value = ''
+    if (files.length === 0) return
+
     setBusy(true)
-    setError('')
-    setStatus(`Đang phân tách "${file.name}"…`)
-    try {
-      const result = await uploadSessionPdf(sessionId, file)
-      setStatus(
-        `Đã nạp ${result.added} điều khoản từ ${result.docCode}` +
-          (result.effective_date ? ` (hiệu lực ${result.effective_date})` : ''),
-      )
-      onUploaded(result)
-    } catch (e: unknown) {
-      setStatus('')
-      setError(e instanceof Error ? e.message : 'Lỗi tải tài liệu.')
-    } finally {
-      setBusy(false)
-      if (inputRef.current) inputRef.current.value = ''
+    const results: SessionUploadResult[] = []
+    const errors: UploadError[] = []
+
+    const controller = new AbortController()
+    if (abortControllerRef) {
+      abortControllerRef.current = controller
     }
+
+    for (const [index, file] of files.entries()) {
+      if (controller.signal.aborted) break
+      setStatus(`Đang phân tích "${file.name}" (${index + 1}/${files.length})…`)
+      if (onUploadStart) onUploadStart(file.name)
+      try {
+        const res = await uploadSessionPdf(sessionId, file, '', controller.signal)
+        results.push(res)
+        if (onFileUploaded) onFileUploaded(res)
+      } catch (e: unknown) {
+        if (e instanceof Error && e.name === 'AbortError') {
+          break
+        }
+        errors.push({ name: file.name, message: e instanceof Error ? e.message : 'lỗi' })
+      }
+    }
+    setStatus('')
+    setBusy(false)
+    if (onUploadEnd) onUploadEnd()
+    if (abortControllerRef) {
+      abortControllerRef.current = null
+    }
+    onComplete(results, errors)
   }
 
   return (
@@ -41,7 +63,7 @@ function InlineUpload({ sessionId, onUploaded }: Props) {
       <button
         type="button"
         aria-label="Đính kèm tài liệu PDF (phiên này)"
-        title="Đính kèm PDF (chỉ trong phiên này)"
+        title="Đính kèm PDF — có thể chọn nhiều file (chỉ trong phiên này)"
         disabled={busy}
         onClick={() => inputRef.current?.click()}
       >
@@ -53,11 +75,11 @@ function InlineUpload({ sessionId, onUploaded }: Props) {
         ref={inputRef}
         type="file"
         accept="application/pdf,.pdf"
+        multiple
         hidden
         onChange={onPick}
       />
       {status && <span className="upload-note">{status}</span>}
-      {error && <span className="upload-note error">{error}</span>}
     </span>
   )
 }

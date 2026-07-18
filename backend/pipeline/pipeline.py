@@ -87,36 +87,30 @@ def run_pipeline(
     if not is_baseline:
         conflict_warning = conflict_check_stage(active_candidates)
 
-    # 5. SYNTHESIZE ADVANCED RESPONSE
+    # 5. SYNTHESIZE — câu trả lời NGẮN GỌN, markdown thuần.
+    # Không lặp lại: cảnh báo xung đột (đã ở conflictWarning) và chi tiết nguồn (đã
+    # ở sources card) hiển thị riêng ở UI. KHÔNG dùng gạch ngang ASCII (gây lỗi
+    # xuống dòng dọc) và không in header phân quyền (vai trò đã hiện ở giao diện).
     answer_parts = []
-    
-    # Header: Quyền truy cập
-    dept_label = (department or "Tất cả").upper()
-    role_label = "NHÂN VIÊN" if role in ("employee", "staff") else "KHÁCH HÀNG"
-    answer_parts.append(f"ℹ️ [PHÂN QUYỀN HỆ THỐNG]: Vai trò: {role_label} | Phòng ban: {dept_label} | Mốc thời gian đối soát: {as_of}")
-    answer_parts.append("-" * 60)
-
-    # Cảnh báo rà soát xung đột nếu có
-    if conflict_warning:
-        answer_parts.append(f"⚠️ CẢNH BÁO RÀ SOÁT TUÂN THỦ:\n{conflict_warning}\n")
-
-    # Nội dung trả lời chính
     if active_candidates:
-        answer_parts.append("📌 CÁC QUY ĐỊNH ĐANG ÁP DỤNG TRONG HỆ THỐNG:")
-        for idx, c in enumerate(active_candidates, 1):
-            source_info = f"({c.clause_id} - Hiệu lực từ: {c.effective_date})"
-            dept_info = f" [Phòng ban: {c.department.upper()}]"
-            answer_parts.append(f"\n{idx}. {c.text} {source_info}{dept_info}")
+        answer_parts.append("## Quy định đang áp dụng")
+        for c in active_candidates[:4]:
+            answer_parts.append(f"- **{c.clause_id}**: {c.text}")
+        extra = len(active_candidates) - 4
+        if extra > 0:
+            answer_parts.append(f"- …và {extra} quy định liên quan khác (xem phần Nguồn tham khảo).")
     else:
-        answer_parts.append("❌ Không tìm thấy điều khoản pháp lý nào đang hiệu lực phù hợp để trả lời câu hỏi.")
+        answer_parts.append(
+            "Không tìm thấy điều khoản pháp lý đang hiệu lực phù hợp với câu hỏi."
+        )
 
-    # Cảnh báo các văn bản hết hiệu lực hoặc bị thay thế liên quan đến chủ đề câu hỏi
-    if superseded_candidates:
-        answer_parts.append("\n" + "=" * 40)
-        answer_parts.append("⚠️ THÔNG TIN LỊCH SỬ (Đã hết hiệu lực / bị thay thế):")
-        for c in superseded_candidates:
-            expiry_label = f"hết hiệu lực ngày {c.expiry_date}" if c.expiry_date else "được thay thế"
-            answer_parts.append(f"• [{c.clause_id}]: {c.text[:150]}... ({expiry_label})")
+    if superseded_candidates and not is_baseline:
+        answer_parts.append("## Đã hết hiệu lực / bị thay thế")
+        for c in superseded_candidates[:3]:
+            label = (
+                f"hết hiệu lực {c.expiry_date}" if c.expiry_date else "đã bị thay thế"
+            )
+            answer_parts.append(f"- **{c.clause_id}** ({label})")
 
     answer = "\n".join(answer_parts)
 

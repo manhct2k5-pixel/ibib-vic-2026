@@ -18,6 +18,10 @@ networkx         # đồ thị quan hệ điều khoản
 pdfplumber       # bóc tách PDF (admin ingest)
 pypdf            # cắt Điều cho tài liệu phiên (Story 7.6)
 python-docx      # bóc tách .docx
+pypdfium2        # render trang PDF → ảnh cho OCR
+pytesseract      # OCR fallback (PDF scan/font hỏng). CẦN: tesseract + gói 'vie'
+# OCR cần binary hệ thống: `brew install tesseract` + gói tiếng Việt vie.traineddata
+# (tessdata_fast) đặt trong thư mục tessdata của tesseract.
 
 # Test
 pytest
