@@ -480,11 +480,11 @@ export default function SidePanelPage() {
           <MarkdownAnswer content={turn.answer} />
           {turn.scopeInfo && <div className="scope-info">⌕ {turn.scopeInfo}</div>}
           <footer className="answer-meta"><span>{turn.completedAt ? new Date(turn.completedAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : 'Vừa xong'}</span>{typeof turn.latencyMs === 'number' && <span>{turn.latencyMs < 1_000 ? `${turn.latencyMs} ms` : `${(turn.latencyMs / 1_000).toFixed(1)} giây`}</span>}<span className={turn.sources.length ? 'confidence-ok' : 'confidence-low'}>● {confidenceLabel(turn.confidence, turn.sources.length)}</span></footer>
-          {turn.sources.length > 0 && <section className="sources"><header><div><strong>Nguồn đối chiếu</strong><span>{turn.sources.length} điều khoản</span></div><button type="button" onClick={() => void copyText(turn.sources.map(sourceText).join('\n\n'), `sources-${turn.id}`)}>{copied === `sources-${turn.id}` ? '✓ Đã sao chép' : copyFailed === `sources-${turn.id}` ? 'Không thể chép' : '⧉ Sao chép nguồn'}</button></header><div className="source-list">{turn.sources.map((source, index) => {
+          {turn.sources.length > 0 && <details className="sources"><summary><div><strong>Nguồn đối chiếu</strong><span>{turn.sources.length} điều khoản · Nhấn để xem</span></div><i aria-hidden="true" /></summary><div className="source-toolbar"><button type="button" onClick={() => void copyText(turn.sources.map(sourceText).join('\n\n'), `sources-${turn.id}`)}>{copied === `sources-${turn.id}` ? '✓ Đã sao chép' : copyFailed === `sources-${turn.id}` ? 'Không thể chép' : '⧉ Sao chép nguồn'}</button></div><div className="source-list">{turn.sources.map((source, index) => {
             const clauseId = source.clause_id || source.clauseId || 'Nguồn'
             const sourceUrl = source.url || source.source_url
             return <article className="source" key={`${clauseId}-${index}`}><div className="source-title"><mark>{clauseId}</mark><span className={source.is_current === false ? 'source-old' : 'source-current'}>{source.is_current === false ? 'Đã thay thế' : 'Đang hiệu lực'}</span></div><strong>{source.name || clauseId}</strong><p>{source.body || source.description || 'Chưa có nội dung xem trước.'}</p><div className="source-actions"><button type="button" onClick={() => void copyText(sourceText(source), `source-${turn.id}-${index}`)}>{copied === `source-${turn.id}-${index}` ? '✓ Đã chép' : copyFailed === `source-${turn.id}-${index}` ? 'Không thể chép' : '⧉ Sao chép'}</button>{sourceUrl && <a href={sourceUrl} target="_blank" rel="noreferrer">Mở nguồn ↗</a>}</div></article>
-          })}</div></section>}
+          })}</div></details>}
         </>}
       </div>
     </article>)}</main>

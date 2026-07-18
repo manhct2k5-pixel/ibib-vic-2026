@@ -152,8 +152,8 @@
 .answer-heading strong, .answer-heading span { display:block; }
 .answer-heading strong { margin-top:2px; color:#263038; font-size:12px; }
 .answer-kind { color:#a85a22; font-size:8px; font-weight:700; letter-spacing:.02em; text-transform:uppercase; }
-.answer-heading button, .sources > header button, .source-actions button { padding:6px 8px; flex:0 0 auto; color:#b9530a; border:1px solid #ffd0ad; border-radius:8px; background:#fff; font-size:8px; font-weight:700; cursor:pointer; }
-.answer-heading button:hover, .sources > header button:hover, .source-actions button:hover { background:#fff1e7; }
+.answer-heading button, .source-toolbar button, .source-actions button { padding:6px 8px; flex:0 0 auto; color:#b9530a; border:1px solid #ffd0ad; border-radius:8px; background:#fff; font-size:8px; font-weight:700; cursor:pointer; }
+.answer-heading button:hover, .source-toolbar button:hover, .source-actions button:hover { background:#fff1e7; }
 .markdown-answer { padding: 12px 14px 8px; color:#303a42; }
 .markdown-answer h2, .markdown-answer h3, .markdown-answer h4 { margin:13px 0 7px; color:#172129; line-height:1.35; }
 .markdown-answer h2:first-child, .markdown-answer h3:first-child, .markdown-answer h4:first-child { margin-top:0; }
@@ -166,8 +166,16 @@
 .scope-info { margin:0 14px 9px; padding:7px 9px; color:#8a4a1e; border-radius:7px; background:#fff5ed; font-size:8px; line-height:1.45; }
 .answer-meta span + span::before { margin-right:10px; color:#cbd1d5; content:'•'; }.answer-meta .confidence-ok { color:#26764a; }.answer-meta .confidence-low { color:#a56b22; }
 .sources { margin:0; padding:12px 13px 13px; border-top:1px solid #e7ebed; background:#f8fafb; }
-.sources > header { display:flex; align-items:center; justify-content:space-between; gap:10px; }
-.sources > header strong, .sources > header span { display:block; }.sources > header strong { color:#263139; font-size:11px; }.sources > header span { margin-top:2px; color:#879198; font-size:8px; }
+.sources > summary { display:flex; align-items:center; justify-content:space-between; gap:10px; list-style:none; cursor:pointer; user-select:none; }
+.sources > summary::-webkit-details-marker { display:none; }
+.sources > summary strong, .sources > summary span { display:block; }.sources > summary strong { color:#263139; font-size:11px; }.sources > summary span { margin-top:2px; color:#879198; font-size:8px; }
+.sources > summary { margin:-4px; padding:4px; border-radius:9px; transition:background .16s ease; }
+.sources > summary:hover { background:#fff3ea; }
+.sources > summary i { width:28px; height:28px; position:relative; flex:0 0 28px; border:1px solid #f1d5c1; border-radius:9px; background:#fff; box-shadow:0 2px 5px rgba(112,58,20,.07); transition:transform .2s ease, border-color .16s ease, background .16s ease; }
+.sources > summary i::before { position:absolute; top:8px; left:9px; width:7px; height:7px; border-right:1.8px solid #d85d08; border-bottom:1.8px solid #d85d08; content:''; transform:rotate(45deg); }
+.sources > summary:hover i { border-color:#f1b98e; background:#fffaf6; }
+.sources[open] > summary i { transform:rotate(180deg); }
+.source-toolbar { margin-top:9px; display:flex; justify-content:flex-end; }
 .source-list { margin-top:9px; display:grid; gap:8px; }
 .source { margin:0; padding:10px; border-color:#dfe5e8; border-radius:10px; background:#fff; }
 .source-title { display:flex; align-items:center; justify-content:space-between; gap:8px; }
