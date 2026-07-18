@@ -1,5 +1,10 @@
 /* Style cho các feature port Epic 2/7 (inline trong chat) — theo accent cam #ff781d. */
 
+/* Badge loại truy vấn (định tuyến ý định VersionRAG-style) */
+.intent-badge { display: inline-block; margin-bottom: 8px; padding: 3px 10px; border-radius: 12px; font-size: 10px; font-weight: 700; }
+.intent-badge.version { background: #eaf1ff; color: #2b58b8; }
+.intent-badge.change { background: #fff0dd; color: #9a5b00; }
+
 /* Chống lỗi chữ 'xuống dòng dọc': token dài (công thức, dấu -, /) chỉ ngắt khi
    thật sự tràn, không xếp từng ký tự một dòng. */
 .formatted-answer, .formatted-answer p, .assistant-message,

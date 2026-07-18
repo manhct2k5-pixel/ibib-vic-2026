@@ -9,6 +9,12 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from backend.kb.kb import KnowledgeBase, tokenize_vietnamese
 from backend.pipeline.session_retrieve import retrieve_session
+from backend.pipeline.version_qa import (
+    build_change_answer,
+    build_version_answer,
+    classify_intent,
+    version_chain,
+)
 from backend.providers.llm import get_llm, is_configured
 
 _SYNTH_TIMEOUT_S = 20.0  # LLM tổng hợp câu trả lời; lỗi/timeout → rơi về rule-based
@@ -194,6 +200,33 @@ def run_pipeline(
     if not is_baseline:
         conflict_warning = conflict_check_stage(active_candidates)
 
+    # 4c. ĐỊNH TUYẾN Ý ĐỊNH (VersionRAG-style) — chỉ system mode. Câu hỏi kiểu
+    # "liệt kê phiên bản" / "đã thay đổi gì" được trả lời chuyên biệt theo chuỗi
+    # phiên bản (SUPERSEDES/AMENDS), thay vì tổng hợp nội dung thường.
+    intent = "content"
+    special_answer = None
+    if not is_baseline and candidates:
+        intent = classify_intent(question)
+        if intent in ("version", "change"):
+            # Chọn chuỗi phiên bản tốt nhất trong top ứng viên: ưu tiên chuỗi CÓ
+            # thay đổi SỐ LIỆU (câu chuyện version rõ), sau đó là chuỗi bất kỳ >=2.
+            chain, fallback = [], []
+            for c in candidates[:6]:
+                ch = version_chain(kb, c.clause_id)
+                if len(ch) < 2:
+                    continue
+                if not fallback:
+                    fallback = ch
+                if any(x.metric_value is not None for x in ch):
+                    chain = ch
+                    break
+            chain = chain or fallback
+            special_answer = (
+                build_version_answer(chain, as_of)
+                if intent == "version"
+                else build_change_answer(chain)
+            )
+
     # 5. SYNTHESIZE — câu trả lời NGẮN GỌN, markdown thuần.
     # Không lặp lại: cảnh báo xung đột (đã ở conflictWarning) và chi tiết nguồn (đã
     # ở sources card) hiển thị riêng ở UI. KHÔNG dùng gạch ngang ASCII (gây lỗi
@@ -221,10 +254,11 @@ def run_pipeline(
 
     answer = "\n".join(answer_parts)
 
-    # 5b. LLM SYNTHESIZE (chỉ system mode, có active): viết câu trả lời mạch lạc,
-    # grounded, trích nguồn. Lỗi/không key → giữ answer rule-based ở trên. Baseline
-    # (RAG thường) CỐ TÌNH giữ bản liệt kê thô để lộ điểm yếu khi benchmark.
-    if not is_baseline and active_candidates:
+    # 5b. Ưu tiên câu trả lời chuyên biệt version/change; nếu không, LLM synthesize
+    # (content). Lỗi/không key → giữ answer rule-based. Baseline giữ liệt kê thô.
+    if special_answer:
+        answer = special_answer
+    elif not is_baseline and active_candidates:
         llm_answer = _llm_synthesize(question, active_candidates, superseded_candidates, as_of)
         if llm_answer:
             answer = llm_answer
@@ -238,6 +272,7 @@ def run_pipeline(
         "answer": answer,
         "sources": sources,
         "conflictWarning": conflict_warning,
+        "intent": intent,  # content | version | change (định tuyến VersionRAG-style)
         "requestId": f"req-{int(datetime.now().timestamp())}",
         "latencyMs": latency_ms
     }

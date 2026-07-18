@@ -14,6 +14,7 @@ export type ChatResponse = {
   answer: string
   sources: SourceItem[]
   conflictWarning?: string | null
+  intent?: 'content' | 'version' | 'change' | string
   requestId?: string
   latencyMs?: number
 }
@@ -239,6 +240,7 @@ export const sendChatRequest = async (
     return {
       answer: payload.answer,
       sources: parseSources(payload.sources),
+      intent: typeof payload.intent === 'string' ? payload.intent : undefined,
       conflictWarning:
         typeof payload.conflictWarning === 'string'
           ? payload.conflictWarning
