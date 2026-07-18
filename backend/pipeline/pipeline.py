@@ -9,6 +9,39 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from backend.kb.kb import KnowledgeBase, tokenize_vietnamese
 from backend.pipeline.session_retrieve import retrieve_session
+from backend.providers.llm import get_llm, is_configured
+
+_SYNTH_TIMEOUT_S = 20.0  # LLM tổng hợp câu trả lời; lỗi/timeout → rơi về rule-based
+
+
+def _llm_synthesize(question, active, superseded, as_of):
+    """Dùng LLM viết câu trả lời NGẮN GỌN, GROUNDED (chỉ dựa điều khoản cung cấp),
+    có trích nguồn [clause_id]. Trả None nếu lỗi/timeout/không cấu hình → caller
+    tự rơi về câu trả lời rule-based."""
+    if not is_configured():
+        return None  # không có key LLM → dùng rule-based (tránh MockLLM echo)
+    system = (
+        "Bạn là trợ lý pháp lý ngân hàng Việt Nam. Trả lời NGẮN GỌN, chính xác, "
+        "CHỈ dựa trên các điều khoản được cung cấp — KHÔNG bịa số liệu/quy định. "
+        "Mỗi khẳng định phải trích nguồn dạng [clause_id]. Nếu điều khoản không đủ "
+        "để trả lời, nói rõ điều đó. Trả lời bằng tiếng Việt, markdown gọn (đoạn "
+        "ngắn hoặc gạch đầu dòng). Ưu tiên điều khoản ĐANG HIỆU LỰC; nếu có điều bị "
+        "thay thế liên quan thì nêu ngắn sự thay đổi."
+    )
+    act_lines = "\n".join(f"[{c.clause_id}] {c.text}" for c in active)
+    parts = [f"Câu hỏi: {question}", f"Mốc thời gian đối soát: {as_of}", "",
+             "ĐIỀU KHOẢN ĐANG HIỆU LỰC (dùng để trả lời):", act_lines or "(không có)"]
+    if superseded:
+        sup_lines = "\n".join(f"[{c.clause_id}] {c.text[:200]}" for c in superseded[:4])
+        parts += ["", "ĐÃ HẾT HIỆU LỰC / BỊ THAY THẾ (chỉ tham khảo lịch sử, KHÔNG "
+                  "coi là quy định hiện hành):", sup_lines]
+    parts += ["", "Hãy trả lời câu hỏi, trích nguồn [clause_id]."]
+    prompt = "\n".join(parts)
+    try:
+        text = get_llm().generate(system, prompt, timeout=_SYNTH_TIMEOUT_S).strip()
+        return text or None
+    except Exception:  # noqa: BLE001 — mọi lỗi LLM → fallback rule-based
+        return None
 
 class Candidate(BaseModel):
     clause_id: str
@@ -24,6 +57,73 @@ class Candidate(BaseModel):
     metric_value: Optional[float] = None
     metric_unit: Optional[str] = None
     why: Dict[str, Any] = {}
+
+def vector_retrieve_stage(
+    question: str, kb: KnowledgeBase, role: str, department: Optional[str] = None,
+    k: int = 8,
+) -> List[Candidate]:
+    """Tìm kiếm NGỮ NGHĨA: embed câu hỏi → pgvector tìm điều khoản gần nhất (cosine).
+    Áp cùng access control như BM25. Lỗi/thiếu embedding → trả [] (lui về BM25)."""
+    from backend.kb.vector_helper import embed_query
+    from backend.api.database import engine
+    from sqlalchemy import text as _sql
+
+    qvec = embed_query(question)
+    if not qvec:
+        return []
+    vec_str = "[" + ",".join(f"{x:.6f}" for x in qvec) + "]"
+    try:
+        with engine.connect() as conn:
+            rows = conn.execute(
+                _sql(
+                    "SELECT clause_id, embedding <=> :qv AS dist FROM dwh.anh_xa "
+                    "ORDER BY dist ASC LIMIT :k"
+                ),
+                {"qv": vec_str, "k": k},
+            ).all()
+    except Exception:  # noqa: BLE001 — lỗi DB/vector → lui về BM25
+        return []
+
+    out: List[Candidate] = []
+    for clause_id, dist in rows:
+        clause = kb.clauses_dict.get(clause_id)
+        if not clause:
+            continue
+        if role == "customer" and clause.visibility == "internal":
+            continue
+        if role in ("employee", "staff") and department and department != "phap_ly":
+            c_dept = getattr(clause, "department", "phap_ly")
+            if clause.visibility == "internal" and c_dept != department:
+                continue
+        out.append(
+            Candidate(
+                clause_id=clause.clause_id, score=1.0 - float(dist), text=clause.text,
+                doc_code=clause.doc_code, path=clause.path,
+                effective_date=clause.effective_date, expiry_date=clause.expiry_date,
+                topic=clause.topic, visibility=clause.visibility,
+                department=getattr(clause, "department", "phap_ly"),
+                metric_value=clause.metric_value, metric_unit=clause.metric_unit,
+                why={"stage": "vector", "dist": float(dist)},
+            )
+        )
+    return out
+
+
+def _hybrid_merge(
+    bm25: List[Candidate], vector: List[Candidate], k: int = 8
+) -> List[Candidate]:
+    """Trộn 2 bảng xếp hạng bằng Reciprocal Rank Fusion (RRF) — không phụ thuộc
+    thang điểm khác nhau của BM25 và cosine."""
+    C = 60
+    scores: Dict[str, float] = {}
+    cand_by_id: Dict[str, Candidate] = {}
+    for ranking in (bm25, vector):
+        for rank, c in enumerate(ranking):
+            scores[c.clause_id] = scores.get(c.clause_id, 0.0) + 1.0 / (C + rank)
+            cand_by_id.setdefault(c.clause_id, c)
+    ordered = sorted(scores, key=lambda cid: scores[cid], reverse=True)
+    return [cand_by_id[cid] for cid in ordered[:k]]
+
 
 def run_pipeline(
     question: str,
@@ -42,11 +142,18 @@ def run_pipeline(
 
     start_time = datetime.now()
 
-    # 1. RETRIEVE STAGE (with department & role filters)
+    # 1. RETRIEVE STAGE — BM25 (khớp từ khóa)
     candidates = retrieve_stage(question, kb, role, department)
 
     # If mode is baseline, we skip expand and temporal_filter stages
     is_baseline = (mode == "baseline")
+
+    # 1b. HYBRID: thêm tìm kiếm NGỮ NGHĨA (vector) rồi trộn bằng RRF — chỉ system
+    # mode. Baseline (RAG thường) CỐ TÌNH chỉ BM25 để lộ điểm yếu khi benchmark.
+    if not is_baseline:
+        vec_candidates = vector_retrieve_stage(question, kb, role, department)
+        if vec_candidates:
+            candidates = _hybrid_merge(candidates, vec_candidates)
 
     # 2. EXPAND STAGE
     if not is_baseline:
@@ -113,6 +220,14 @@ def run_pipeline(
             answer_parts.append(f"- **{c.clause_id}** ({label})")
 
     answer = "\n".join(answer_parts)
+
+    # 5b. LLM SYNTHESIZE (chỉ system mode, có active): viết câu trả lời mạch lạc,
+    # grounded, trích nguồn. Lỗi/không key → giữ answer rule-based ở trên. Baseline
+    # (RAG thường) CỐ TÌNH giữ bản liệt kê thô để lộ điểm yếu khi benchmark.
+    if not is_baseline and active_candidates:
+        llm_answer = _llm_synthesize(question, active_candidates, superseded_candidates, as_of)
+        if llm_answer:
+            answer = llm_answer
 
     # 6. COMPILE SOURCES FOR RESPONSE
     sources = compile_sources(active_candidates, superseded_candidates, kb, is_baseline)
