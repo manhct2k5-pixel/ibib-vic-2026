@@ -3,7 +3,20 @@ import type { FormEvent, KeyboardEvent } from 'react'
 import { sendChatRequest, type SourceItem } from './services/chatApi'
 import SourceCard from './components/SourceCard'
 import ManagerPanel from './components/ManagerPanel'
+import type { SessionUploadResult } from './services/sessionApi'
+import ConsolidatedDocView from './components/ConsolidatedDocView'
+import InlineUpload from './components/InlineUpload'
+import {
+  addHistory,
+  getBookmarks,
+  getHistory,
+  isBookmarked,
+  toggleBookmark,
+} from './services/personalize'
 import './App.css'
+import './inline-features.css'
+
+const docOf = (clauseId: string) => clauseId.split('/')[0]
 
 const Icon = ({ name }: { name: 'bell' | 'history' | 'paperclip' | 'arrow' | 'calendar' }) => {
   const paths = {
@@ -204,7 +217,17 @@ function App() {
   const [asOf, setAsOf] = useState(typeof initialWorkspace.asOf === 'string' ? initialWorkspace.asOf : getLocalIsoDate)
   const [audience, setAudience] = useState<AccountRole>(initialWorkspace.audience === 'manager' || initialWorkspace.audience === 'employee' ? initialWorkspace.audience : initialRole ?? 'employee')
   const [error, setError] = useState(typeof initialWorkspace.error === 'string' ? initialWorkspace.error : '')
+  const [askedQuestion, setAskedQuestion] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [sessionId] = useState(() =>
+    typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `sess-${Date.now()}`,
+  )
+  const [consolidateDoc, setConsolidateDoc] = useState<string | null>(null)
+  const [uploadInfo, setUploadInfo] = useState<SessionUploadResult | null>(null)
+  const [history, setHistory] = useState<string[]>(() => getHistory())
+  const [bookmarks, setBookmarks] = useState<string[]>(() => getBookmarks())
   const [isProfileOpen, setIsProfileOpen] = useState(false)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [settingsSection, setSettingsSection] = useState<'appearance' | 'security'>('appearance')
@@ -220,7 +243,6 @@ function App() {
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false)
   const [notifications, setNotifications] = useState<AppNotification[]>(loadNotifications)
   const [isManagerArea, setIsManagerArea] = useState(false)
-  const fileInput = useRef<HTMLInputElement>(null)
   const avatarInput = useRef<HTMLInputElement>(null)
   const homeRef = useRef<HTMLElement>(null)
   const promptInputRef = useRef<HTMLTextAreaElement>(null)
@@ -413,9 +435,7 @@ function App() {
     }
   }, [question, lastQuestion, conversation, answer, sources, conflictWarning, requestId, latencyMs, error, asOf, audience])
 
-  const submit = async (event?: FormEvent) => {
-    event?.preventDefault()
-    const value = question.trim()
+  const runQuery = async (value: string) => {
     if (!value || isLoading) return
     if (answer || error) {
       setConversation((current) => [...current, {
@@ -424,9 +444,11 @@ function App() {
       }])
     }
     setLastQuestion(value)
+    setAskedQuestion(value)
+    setConsolidateDoc(null)
     setError(''); setAnswer(''); setSources([]); setConflictWarning(null); setRequestId(null); setLatencyMs(null); setIsLoading(true)
     try {
-      const result = await sendChatRequest(value, { asOf, audience, mode: 'system' })
+      const result = await sendChatRequest(value, { asOf, audience, mode: 'system', sessionId })
       setAnswer(result.answer)
       setQuestion('')
       window.requestAnimationFrame(() => {
@@ -436,6 +458,7 @@ function App() {
       setConflictWarning(result.conflictWarning ?? null)
       setRequestId(result.requestId ?? null)
       setLatencyMs(result.latencyMs ?? null)
+      setHistory(addHistory(value))
       addToHistory({
         id: Date.now(), question: value, answer: result.answer, error: '', sources: result.sources,
         conflictWarning: result.conflictWarning ?? null, requestId: result.requestId ?? null,
@@ -451,6 +474,23 @@ function App() {
       })
     } finally { setIsLoading(false) }
   }
+
+  const submit = async (event?: FormEvent) => {
+    event?.preventDefault()
+    void runQuery(question.trim())
+  }
+
+  const onUploaded = (result: SessionUploadResult) => {
+    setUploadInfo(result)
+    setConsolidateDoc(result.docCode)
+  }
+
+  const onToggleBookmark = () => {
+    if (!askedQuestion) return
+    setBookmarks(toggleBookmark(askedQuestion))
+  }
+
+  const docChips = Array.from(new Set(sources.map((s) => docOf(s.clauseId)).filter(Boolean)))
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === 'Enter' && !event.shiftKey) {
@@ -607,7 +647,8 @@ function App() {
             <div className="prompt-tools">
               <div className="left-tools">
                 <button type="button" aria-label="Lịch sử giao dịch" title="Lịch sử giao dịch" onClick={() => setIsHistoryOpen(true)}><Icon name="history" /></button>
-                <button type="button" aria-label="Đính kèm tệp" onClick={() => fileInput.current?.click()}><Icon name="paperclip" /></button>
+                <InlineUpload sessionId={sessionId} onUploaded={onUploaded} />
+                <button type="button" aria-label="Đánh dấu câu hỏi" title="Đánh dấu câu hỏi" onClick={onToggleBookmark} disabled={!askedQuestion} className={askedQuestion && isBookmarked(askedQuestion) ? 'pinned' : ''}>☆</button>
               </div>
               <div className="prompt-actions">
                 <button className="new-chat-button" type="button" onClick={startNewChat} disabled={isLoading || (!lastQuestion && conversation.length === 0)} aria-label="Tạo cuộc trò chuyện mới"><span>＋</span> New chat</button>
@@ -615,7 +656,32 @@ function App() {
               </div>
             </div>
           </form>
-          <input ref={fileInput} type="file" hidden />
+          {!answer && !isLoading && !error && (bookmarks.length > 0 || history.length > 0) && (
+            <div className="quick-access">
+              {bookmarks.length > 0 && (
+                <div className="qa-group">
+                  <span className="qa-label">Đã đánh dấu</span>
+                  {bookmarks.slice(0, 5).map((q) => (
+                    <button key={q} type="button" className="qa-chip" onClick={() => { setQuestion(q); void runQuery(q) }}>{q}</button>
+                  ))}
+                </div>
+              )}
+              {history.length > 0 && (
+                <div className="qa-group">
+                  <span className="qa-label">Gần đây</span>
+                  {history.slice(0, 5).map((q) => (
+                    <button key={q} type="button" className="qa-chip" onClick={() => { setQuestion(q); void runQuery(q) }}>{q}</button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {(uploadInfo || docChips.length > 0) && <div className="consolidate-chips">
+            {uploadInfo && <button type="button" className="consolidate-chip attached" onClick={() => setConsolidateDoc(uploadInfo.docCode)}>Tệp vừa đính kèm: {uploadInfo.docCode}</button>}
+            {docChips.map((docCode) => <button key={docCode} type="button" className={`consolidate-chip ${consolidateDoc === docCode ? 'active' : ''}`} onClick={() => setConsolidateDoc(consolidateDoc === docCode ? null : docCode)}>Văn bản hợp nhất: {docCode}</button>)}
+          </div>}
+          {consolidateDoc && <ConsolidatedDocView docCode={consolidateDoc} asOf={asOf} sessionId={sessionId} onClose={() => setConsolidateDoc(null)} />}
         </section>
       </main>}
 

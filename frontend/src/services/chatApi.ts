@@ -22,6 +22,7 @@ export type ChatOptions = {
   asOf?: string
   mode?: 'system' | 'baseline'
   audience?: 'manager' | 'employee' | 'customer'
+  sessionId?: string
 }
 
 export type BackendHealth = {
@@ -198,6 +199,7 @@ export const sendChatRequest = async (
         ...(options.asOf ? { asOf: options.asOf } : {}),
         ...(options.mode ? { mode: options.mode } : {}),
         ...(options.audience ? { audience: options.audience } : {}),
+        ...(options.sessionId ? { sessionId: options.sessionId } : {}),
       }),
       signal: controller.signal,
     })
