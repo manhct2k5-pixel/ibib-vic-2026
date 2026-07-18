@@ -1,0 +1,20 @@
+# render.yaml — Render Blueprint (Infrastructure as Code)
+# Đẩy file này lên repo, Render sẽ tự nhận diện và deploy.
+
+services:
+  - type: web
+    name: compliance-copilot-backend
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free  # Đổi thành "starter" ($7/tháng) nếu cần tốc độ ổn định hơn
+    envVars:
+      - key: LLM_API_KEY
+        sync: false  # Nhập thủ công trên Render Dashboard (bảo mật)
+      - key: LLM_MODEL
+        value: DeepSeek-V4-Flash
+      - key: LLM_BASE_URL
+        value: https://mkp-api.fptcloud.com/v1/
+      - key: DATABASE_URL
+        sync: false  # Nhập thủ công trên Render Dashboard (bảo mật)
+    healthCheckPath: /health
