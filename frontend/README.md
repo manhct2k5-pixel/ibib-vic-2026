@@ -1,6 +1,6 @@
-# Team IBIB – Frontend Starter
+# Team SovAI – Frontend Starter
 
-Bộ khung frontend dùng chung cho Team IBIB, xây dựng bằng React, TypeScript và Vite.
+Bộ khung frontend dùng chung cho Team SovAI, xây dựng bằng React, TypeScript và Vite.
 
 Tên sản phẩm, màu sắc, logo và luồng nghiệp vụ sẽ được điều chỉnh sau khi ban tổ chức công bố đề thi.
 

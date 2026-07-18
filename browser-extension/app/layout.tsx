@@ -3,7 +3,7 @@ import './globals.css'
 import './composer.css'
 
 export const metadata: Metadata = {
-  title: 'IBIB',
+  title: 'SovAI',
   description: 'Browser extension trợ lý tuân thủ',
 }
 

@@ -1,11 +1,12 @@
 import os
 import sys
+import re
 from concurrent.futures import ThreadPoolExecutor
-from datetime import date
+from datetime import date, datetime
 from typing import Optional, List, Dict, Any
 from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlmodel import Session, select
 
 # Executor xử lý NỀN: OCR/parse PDF nặng chạy tách khỏi request để không timeout.
@@ -43,7 +44,7 @@ from backend.ingest.doc_analyze import (
     doc_code_from_filename,
     quick_metadata,
 )
-from backend.providers.llm import get_llm
+from backend.providers.llm import get_llm, is_configured
 
 # Initialize database tables on startup
 try:
@@ -87,6 +88,94 @@ class ChatRequest(BaseModel):
     audience: Optional[str] = None   # alias for role / access control
     department: Optional[str] = None # "tin_dung" | "quan_ly_rui_ro" | "phap_ly"
     sessionId: Optional[str] = None  # tài liệu đính kèm phiên (AD-13, Story 7.6)
+
+
+class PageSummaryRequest(BaseModel):
+    title: str = ""
+    url: str = ""
+    text: str
+    question: Optional[str] = None
+    keywords: List[str] = Field(default_factory=list)
+    warnings: List[str] = Field(default_factory=list)
+    truncated: bool = False
+
+
+def _local_page_summary(text: str, question: Optional[str] = None) -> str:
+    clean = re.sub(r"\s+", " ", text).strip()
+    sentences = re.split(r"(?<=[.!?;:])\s+", clean)
+    useful = []
+    seen = set()
+    for sentence in sentences:
+        sentence = sentence.strip()
+        key = sentence.casefold()
+        if 45 <= len(sentence) <= 500 and key not in seen:
+            useful.append(sentence)
+            seen.add(key)
+        if len(useful) == 10:
+            break
+    if not useful:
+        return "## Kết quả\n- Không tìm thấy đủ nội dung văn bản phù hợp."
+    heading = "## Các đoạn liên quan trên trang" if question else "## Tóm tắt trang"
+    return heading + "\n" + "\n".join(f"- {item}" for item in useful)
+
+
+@app.post("/api/summarize-page")
+def summarize_page_endpoint(req: PageSummaryRequest):
+    started = datetime.now()
+    text = req.text.strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Trang không có nội dung văn bản có thể đọc.")
+    # Giới hạn phía server để tránh một trang bất thường làm cạn bộ nhớ/token.
+    text = text[:80_000]
+    if is_configured():
+        system = (
+            "Bạn là trợ lý đọc hiểu tài liệu. Chỉ sử dụng nội dung trang được cung cấp; "
+            "không suy diễn hoặc bổ sung dữ kiện bên ngoài. Trả lời bằng Markdown tiếng Việt."
+        )
+        task = (
+            f"Hãy trả lời câu hỏi sau dựa duy nhất trên nội dung trang: {req.question}"
+            if req.question
+            else "Hãy đọc và tóm tắt trang sau."
+        )
+        output_format = (
+            "## Trả lời\n## Bằng chứng trên trang\n## Nội dung cần kiểm chứng"
+            if req.question
+            else "## Tóm tắt\n## Ý chính\n## Nghĩa vụ, con số và mốc thời gian\n## Nội dung cần kiểm chứng"
+        )
+        prompt = f"""{task}
+
+Tiêu đề: {req.title}
+URL: {req.url}
+Từ khóa đã dùng để thu hẹp phạm vi: {', '.join(req.keywords) or 'Không có'}
+
+Yêu cầu đầu ra:
+{output_format}
+Nếu phần nào không có dữ liệu, ghi rõ "Không thấy trong nội dung đã đọc".
+
+NỘI DUNG TRANG:
+{text}"""
+        answer = get_llm().generate(system, prompt, timeout=60.0)
+        confidence = "Đã phân tích nội dung trang"
+    else:
+        answer = _local_page_summary(text, req.question)
+        confidence = "Tóm tắt cục bộ"
+    warnings = list(dict.fromkeys(req.warnings))
+    if req.truncated or len(req.text) > len(text):
+        warnings.append("Trang quá dài; kết quả chỉ dựa trên phần nội dung đã trích xuất trong giới hạn 80.000 ký tự.")
+    return {
+        "answer": answer,
+        "sources": [{
+            "name": req.title or req.url or "Trang đang xem",
+            "description": req.url,
+            "body": text[:1_200],
+            "url": req.url,
+            "is_current": True,
+        }],
+        "conflictWarning": " ".join(warnings) if warnings else None,
+        "confidence": confidence,
+        "answerType": "Hỏi đáp theo trang" if req.question else "Tóm tắt trang web",
+        "latencyMs": int((datetime.now() - started).total_seconds() * 1000),
+    }
 
 @app.get("/api/graph")
 def get_graph_endpoint(audience: Optional[str] = "employee"):

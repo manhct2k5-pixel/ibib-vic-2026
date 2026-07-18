@@ -4,7 +4,7 @@ const createContextMenu = () => {
   chrome.contextMenus.removeAll(() => {
     chrome.contextMenus.create({
       id: MENU_ID,
-      title: 'Hỏi IBIB về “%s”',
+      title: 'Hỏi SovAI về “%s”',
       contexts: ['selection'],
     })
   })
@@ -74,6 +74,39 @@ const ensureBubbleForTab = async (tab, enabled) => {
     } catch {
       // Chrome không cho chèn script vào trang hệ thống hoặc trang đặc quyền.
     }
+  }
+  // Đồng thời inject frame-reader vào tất cả iframe (bao gồm cross-origin)
+  // để phục vụ việc đọc nội dung trang khi cần tóm tắt.
+  await ensureContentScriptInAllFrames(tab.id)
+}
+
+// Inject content script vào TẤT CẢ các frame (iframe)
+// để có thể đọc nội dung từ các trang có iframe cross-origin.
+const ensureContentScriptInAllFrames = async (tabId) => {
+  try {
+    const frames = await chrome.webNavigation.getAllFrames({ tabId }).catch(() => null)
+    if (!frames?.length) {
+      await ensureContentScriptInFrame(tabId)
+      return
+    }
+    // Inject vào main frame + tất cả sub-frames
+    await Promise.allSettled(frames.map((frame) =>
+      ensureContentScriptInFrame(tabId, frame.frameId)
+    ))
+  } catch {
+    // Fallback nếu không lấy được frame list
+    await ensureContentScriptInFrame(tabId)
+  }
+}
+
+const ensureContentScriptInFrame = async (tabId, frameId) => {
+  const target = frameId !== undefined ? { tabId, frameIds: [frameId] } : { tabId }
+  try {
+    // Inject frame-reader (đã được manifest khai báo all_frames: true)
+    // vào từng frame riêng biệt, đặc biệt là cross-origin iframes.
+    await chrome.scripting.executeScript({ target, files: ['frame-reader.js'] })
+  } catch {
+    // Frame có thể bị hạn chế (chrome://, about:, etc.)
   }
 }
 

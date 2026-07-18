@@ -1,4 +1,4 @@
-# IBIB — Browser Extension
+# SovAI — Browser Extension
 
 Tiện ích trợ lý tuân thủ dành cho Google Chrome và Microsoft Edge, xây dựng bằng Next.js, React, TypeScript và Chrome Extension Manifest V3.
 
@@ -58,7 +58,7 @@ Extension package ready in browser-extension/out
 2. Bật **Developer mode**.
 3. Chọn **Load unpacked**.
 4. Chọn thư mục `browser-extension/out/`.
-5. Ghim biểu tượng **IBIB** lên thanh công cụ nếu cần.
+5. Ghim biểu tượng **SovAI** lên thanh công cụ nếu cần.
 
 Sau mỗi lần sửa mã nguồn:
 
@@ -90,7 +90,7 @@ Vai trò được hỗ trợ:
 - `employee`: nhân viên.
 - `manager`: quản lý.
 
-Nhấn vào logo **IBIB** trong extension sẽ mở trang chatbot tại `http://localhost:5173/chatbot`.
+Nhấn vào logo **SovAI** trong extension sẽ mở trang chatbot tại `http://localhost:5173/chatbot`.
 
 ## Bật bóng chat
 
@@ -112,7 +112,7 @@ Bóng chat không thể xuất hiện trên các trang đặc quyền như:
 2. Nhấn nút **Hỏi AI** xuất hiện cạnh đoạn chọn.
 3. Nội dung được đưa thẳng vào ô chat.
 
-Cũng có thể nhấp chuột phải vào đoạn đã chọn và dùng mục **Hỏi IBIB**.
+Cũng có thể nhấp chuột phải vào đoạn đã chọn và dùng mục **Hỏi SovAI**.
 
 Extension chỉ sử dụng một giao diện tại một thời điểm:
 
