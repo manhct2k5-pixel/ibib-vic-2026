@@ -42,6 +42,7 @@ POST {VITE_API_BASE_URL}/api/chat
 |---|---|---|---|
 | `asOf` | string (YYYY-MM-DD) | hôm nay | Mốc thời gian lọc hiệu lực |
 | `mode` | string | `system` | `system` (đầy đủ) hoặc `baseline` (tắt lọc hiệu lực + dẫn chiếu, phục vụ benchmark) |
+| `audience` | string | `employee` | `employee` (thấy cả nội bộ) hoặc `customer` (chỉ dữ liệu công khai) |
 
 ## 3. Response thành công
 
@@ -112,6 +113,43 @@ Ví dụ mã trạng thái:
 | `422` | Dữ liệu đầu vào không hợp lệ |
 | `500` | Backend xử lý thất bại |
 | `503` | Dịch vụ tạm thời không khả dụng |
+
+## 4b. Endpoint đồ thị tri thức — `GET /api/graph` (Story 2.1, FR-12)
+
+Trả toàn bộ đồ thị điều khoản + quan hệ để frontend trực quan hóa.
+
+```text
+GET {VITE_API_BASE_URL}/api/graph?audience=employee
+```
+
+| Query | Kiểu | Mặc định | Mô tả |
+|---|---|---|---|
+| `audience` | string | `employee` | `employee` (thấy cả node internal) hoặc `customer` (chỉ node/edge công khai) |
+
+Response `200`:
+
+```json
+{
+  "nodes": [
+    {
+      "id": "TT22/Điều 1",
+      "doc_code": "TT22",
+      "path": "Điều 1",
+      "topic": "ty_le_an_toan_von",
+      "visibility": "public",
+      "expiry_date": null
+    }
+  ],
+  "edges": [
+    { "from": "TT22/Điều 1", "to": "TT41/Điều 6.3", "type": "SUPERSEDES" }
+  ]
+}
+```
+
+- `expiry_date` = `null` nghĩa là còn hiệu lực; có ngày = đã/sẽ hết hiệu lực (frontend hiển thị node xám).
+- `type` ∈ `SUPERSEDES` | `AMENDS` | `REFERENCES` | `GUIDES`.
+- Ở `audience=customer`, node `visibility="internal"` và mọi edge chạm node đó bị loại (AD-11).
+- **Lưu ý FE:** thư viện `react-force-graph-2d` dùng khóa `links` với `source`/`target`; frontend map `edges[].from → source`, `to → target`, giữ `type`.
 
 ## 5. Quy ước tích hợp
 

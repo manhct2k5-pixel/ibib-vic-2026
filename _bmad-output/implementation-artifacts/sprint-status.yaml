@@ -1,0 +1,64 @@
+# generated: 2026-07-17 17:53
+# last_updated: 2026-07-18
+# project: ibib-vic-2026
+# project_key: NOKEY
+# tracking_system: file-system
+# story_location: _bmad-output/implementation-artifacts
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic:  backlog -> in-progress -> done
+# Story: backlog -> ready-for-dev -> in-progress -> review -> done
+# Retrospective: optional <-> done
+# Action Item: open -> in-progress -> done
+
+generated: 2026-07-17 17:53
+last_updated: 2026-07-18
+project: ibib-vic-2026
+project_key: NOKEY
+tracking_system: file-system
+story_location: _bmad-output/implementation-artifacts
+
+development_status:
+  # Epic 0 — Database 
+  epic-0: backlog
+  0-1-dung-postgres-schema: backlog
+  0-2-chuan-bi-corpus: backlog
+  0-3-seed-loader: backlog
+  0-4-repository-layer: backlog
+  epic-0-retrospective: optional
+
+  # Epic 1+ — phần của bạn (tiêu thụ repository của Epic 0)
+  epic-1: done
+  1-1-duong-ong-xanh: done
+  1-2-ket-noi-pipeline-repository: done
+  1-3-hybrid-retrieve-expand-dan-chieu: done
+  1-4-loc-as-of-thay-the-mot-phan: done
+  1-5-tong-hop-cau-tra-loi-trich-nguon: done
+  1-6-giao-dien-chat-nguon-asof-fallback: done
+  1-7-che-do-khach-hang-cong-khai: done
+  epic-1-retrospective: optional
+
+  epic-2: in-progress
+  2-1-truc-quan-do-thi-tri-thuc: review
+  2-2-dong-thoi-gian-phien-ban: backlog
+  2-3-bam-nguon-highlight-node: backlog
+  epic-2-retrospective: optional
+
+  epic-3: done
+  3-1-rule-phat-hien-xung-dot: done
+  3-2-banner-canh-bao-xung-dot: done
+  epic-3-retrospective: optional
+
+  epic-4: done
+  4-1-che-do-baseline: done
+  4-2-man-benchmark-2-cot: done
+  epic-4-retrospective: optional
+
+  epic-5: backlog
+  5-1-nap-van-ban-admin-atomic-swap: backlog
+  epic-5-retrospective: optional
+
+  epic-6: backlog
+  6-1-radar-bao-cao-tac-dong: backlog
+  epic-6-retrospective: optional

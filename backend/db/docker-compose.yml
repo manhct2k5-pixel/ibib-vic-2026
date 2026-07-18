@@ -1,0 +1,18 @@
+# Postgres cho Compliance Copilot — chạy: docker compose up -d
+# Kết nối: postgresql://ibib:ibib@localhost:5432/compliance
+services:
+  db:
+    image: postgres:17
+    container_name: ibib-postgres
+    environment:
+      POSTGRES_USER: ibib
+      POSTGRES_PASSWORD: ibib
+      POSTGRES_DB: compliance
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Tự chạy schema.sql lần đầu khởi tạo container
+      - ./schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+volumes:
+  pgdata:
