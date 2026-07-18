@@ -1,0 +1,9 @@
+# Runtime
+fastapi
+uvicorn[standard]
+pydantic>=2
+httpx            # AnthropicLLM gọi Messages API
+python-dotenv    # nạp backend/.env (LLM_API_KEY)
+
+# Test
+pytest

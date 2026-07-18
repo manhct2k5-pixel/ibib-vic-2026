@@ -48,7 +48,50 @@ class ChatRequest(BaseModel):
     asOf: Optional[str] = None
     mode: Optional[str] = "system"  # "system" | "baseline"
     role: Optional[str] = "employee"  # "employee" | "customer"
+    audience: Optional[str] = None   # alias for role / access control
     department: Optional[str] = None # "tin_dung" | "quan_ly_rui_ro" | "phap_ly"
+
+@app.get("/api/graph")
+def get_graph_endpoint(audience: Optional[str] = "employee"):
+    session = Session(engine)
+    scope = "all" if audience == "employee" else "public"
+    
+    # Query all active clauses
+    stmt = select(Clause).where(Clause.status == "active")
+    if scope == "public":
+        stmt = stmt.where(Clause.visibility == "public")
+    clauses = session.exec(stmt).all()
+    clause_ids = {c.clause_id for c in clauses}
+    
+    nodes = [
+        {
+            "id": c.clause_id,
+            "doc_code": c.doc_code,
+            "path": c.path,
+            "topic": c.topic,
+            "visibility": c.visibility,
+            "expiry_date": c.expiry_date.isoformat() if c.expiry_date else None,
+            "department": c.department
+        }
+        for c in clauses
+    ]
+    
+    # Query edges
+    stmt_edges = select(Edge)
+    edges_list = session.exec(stmt_edges).all()
+    edges = [
+        {
+            "from": e.from_clause,
+            "to": e.to_clause,
+            "type": e.type,
+            "note": e.note
+        }
+        for e in edges_list
+        if e.from_clause in clause_ids and e.to_clause in clause_ids
+    ]
+    session.close()
+    
+    return {"nodes": nodes, "edges": edges}
 
 @app.post("/api/chat")
 def chat_endpoint(req: ChatRequest):
@@ -58,12 +101,17 @@ def chat_endpoint(req: ChatRequest):
     # Default to today's date if asOf is not provided
     as_of_str = req.asOf or date.today().strftime("%Y-%m-%d")
     
+    # Support both req.audience and req.role (fail-closed)
+    target_role = req.audience or req.role or "employee"
+    if target_role not in ("employee", "staff"):
+        target_role = "customer"
+        
     try:
         response = run_pipeline(
             question=req.question,
             as_of_str=as_of_str,
             mode=req.mode or "system",
-            role=req.role or "employee",
+            role=target_role,
             kb=current_kb,
             department=req.department
         )
