@@ -159,6 +159,8 @@ function GraphPanel({ audience }: Props) {
                 </dd>
                 <dt>Chủ đề</dt>
                 <dd>{selected.topic}</dd>
+                <dt>Phạm vi</dt>
+                <dd>{selected.visibility === 'internal' ? 'Nội bộ' : 'Công khai'}</dd>
                 <dt>Trạng thái</dt>
                 <dd>
                   {isExpired(selected) ? (
@@ -167,6 +169,8 @@ function GraphPanel({ audience }: Props) {
                     <span className="badge active">Còn hiệu lực</span>
                   )}
                 </dd>
+                <dt>Ngày hết hiệu lực</dt>
+                <dd>{selected.expiry_date ? new Intl.DateTimeFormat('vi-VN').format(new Date(`${selected.expiry_date}T00:00:00`)) : 'Chưa xác định'}</dd>
               </dl>
               {/* Hook mở timeline phiên bản — hoàn thiện ở Story 2.2 */}
               <button type="button" className="secondary-button" disabled>

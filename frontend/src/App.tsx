@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { FormEvent, KeyboardEvent } from 'react'
-import { sendChatRequest } from './services/chatApi'
+import { checkBackendHealth, sendChatRequest, type SourceItem } from './services/chatApi'
+import SourceCard from './components/SourceCard'
 import './App.css'
 
 const Icon = ({ name }: { name: 'bell' | 'history' | 'paperclip' | 'pin' | 'arrow' | 'calendar' }) => {
@@ -15,18 +16,46 @@ const Icon = ({ name }: { name: 'bell' | 'history' | 'paperclip' | 'pin' | 'arro
   return <svg viewBox="0 0 24 24" aria-hidden="true">{paths[name]}</svg>
 }
 
+const getLocalIsoDate = () => {
+  const now = new Date()
+  const pad = (value: number) => String(value).padStart(2, '0')
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
+}
+
+const InlineText = ({ text }: { text: string }) => <>{text.split(/(\*\*.*?\*\*)/g).map((part, index) => part.startsWith('**') && part.endsWith('**') ? <strong key={index}>{part.slice(2, -2)}</strong> : part)}</>
+
+const FormattedAnswer = ({ content }: { content: string }) => (
+  <div className="formatted-answer">
+    {content.split('\n').map((rawLine, index) => {
+      const line = rawLine.trim()
+      if (!line) return <div className="answer-spacer" key={index} />
+      if (line.startsWith('### ')) return <h3 key={index}><InlineText text={line.slice(4)} /></h3>
+      if (line.startsWith('## ')) return <h2 key={index}><InlineText text={line.slice(3)} /></h2>
+      if (line.startsWith('- ')) return <div className="answer-bullet" key={index}><span>•</span><p><InlineText text={line.slice(2)} /></p></div>
+      return <p key={index}><InlineText text={line} /></p>
+    })}
+  </div>
+)
+
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(() => window.location.pathname === '/chatbot')
   const [loginName, setLoginName] = useState('')
   const [loginPassword, setLoginPassword] = useState('')
   const [question, setQuestion] = useState('')
   const [answer, setAnswer] = useState('')
+  const [sources, setSources] = useState<SourceItem[]>([])
+  const [conflictWarning, setConflictWarning] = useState<string | null>(null)
+  const [requestId, setRequestId] = useState<string | null>(null)
+  const [latencyMs, setLatencyMs] = useState<number | null>(null)
+  const [isBackendOnline, setIsBackendOnline] = useState<boolean | null>(null)
+  const [asOf, setAsOf] = useState(getLocalIsoDate)
+  const [audience, setAudience] = useState<'manager' | 'employee'>('employee')
   const [error, setError] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [isProfileOpen, setIsProfileOpen] = useState(false)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [settingsSection, setSettingsSection] = useState<'appearance' | 'security'>('appearance')
-  const [theme, setTheme] = useState<'light' | 'dark' | 'system'>('system')
+  const [theme, setTheme] = useState<'light' | 'dark' | 'system'>('light')
   const [fontSize, setFontSize] = useState<'small' | 'medium' | 'large'>('medium')
   const [isPasswordFormOpen, setIsPasswordFormOpen] = useState(false)
   const [displayName, setDisplayName] = useState('FB: SnooAI')
@@ -38,6 +67,13 @@ function App() {
     setIsAuthenticated(path === '/chatbot')
   }
 
+  const completeLogin = () => {
+    const normalizedName = loginName.trim().toLocaleLowerCase('vi-VN')
+    const isManager = ['manager', 'admin', 'quanly', 'quản lý'].includes(normalizedName)
+    setAudience(isManager ? 'manager' : 'employee')
+    navigate('/chatbot')
+  }
+
   useEffect(() => {
     if (window.location.pathname !== '/login' && window.location.pathname !== '/chatbot') {
       window.history.replaceState({}, '', '/login')
@@ -47,14 +83,35 @@ function App() {
     return () => window.removeEventListener('popstate', handlePopState)
   }, [])
 
+  useEffect(() => {
+    let active = true
+    const checkConnection = () => checkBackendHealth()
+      .then(() => { if (active) setIsBackendOnline(true) })
+      .catch(() => { if (active) setIsBackendOnline(false) })
+    void checkConnection()
+    const timer = window.setInterval(checkConnection, 30_000)
+    return () => { active = false; window.clearInterval(timer) }
+  }, [])
+
+  useEffect(() => {
+    const updateDate = () => setAsOf(getLocalIsoDate())
+    const timer = window.setInterval(updateDate, 60_000)
+    return () => window.clearInterval(timer)
+  }, [])
+
   const submit = async (event?: FormEvent) => {
     event?.preventDefault()
     const value = question.trim()
     if (!value || isLoading) return
-    setError(''); setAnswer(''); setIsLoading(true)
+    setError(''); setAnswer(''); setSources([]); setConflictWarning(null); setRequestId(null); setLatencyMs(null); setIsLoading(true)
     try {
-      const result = await sendChatRequest(value)
+      const result = await sendChatRequest(value, { asOf, audience, mode: 'system' })
       setAnswer(result.answer)
+      setQuestion('')
+      setSources(result.sources)
+      setConflictWarning(result.conflictWarning ?? null)
+      setRequestId(result.requestId ?? null)
+      setLatencyMs(result.latencyMs ?? null)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Đã xảy ra lỗi.')
     } finally { setIsLoading(false) }
@@ -79,7 +136,7 @@ function App() {
           <section className="login-card" aria-labelledby="login-title">
             <h1 id="login-title">Chào mừng quay trở lại</h1>
             <p className="login-subtitle">Đăng nhập để truy cập hệ thống quản trị của<br />tổ chức.</p>
-            <form onSubmit={(event) => { event.preventDefault(); navigate('/chatbot') }}>
+            <form onSubmit={(event) => { event.preventDefault(); completeLogin() }}>
               <label className="login-field">
                 <span>Tên đăng nhập</span>
                 <input required autoComplete="username" value={loginName} onChange={(event) => setLoginName(event.target.value)} placeholder="Nhập tên đăng nhập của bạn" />
@@ -97,11 +154,11 @@ function App() {
 
             <div className="login-divider"><span>hoặc đăng nhập bằng</span></div>
             <div className="social-login">
-              <button type="button" onClick={() => navigate('/chatbot')} aria-label="Đăng nhập bằng Google">
+              <button type="button" onClick={() => { setAudience('employee'); navigate('/chatbot') }} aria-label="Đăng nhập bằng Google">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12.2c0-.7-.1-1.3-.2-1.9H12v3.6h4.5a3.9 3.9 0 0 1-1.7 2.5v2.3h2.9c1.7-1.6 2.3-3.8 2.3-6.5Z"/><path d="M12 20c2.2 0 4.1-.7 5.5-2l-2.9-2.3c-.8.5-1.8.9-2.9.9-2.1 0-3.9-1.4-4.6-3.4h-3v2.4A8.3 8.3 0 0 0 12 20Z"/><path d="M7.1 13.2a5 5 0 0 1 0-3.1V7.7h-3a8.3 8.3 0 0 0 0 7.9l3-2.4Z"/><path d="M12 6.7c1.2 0 2.3.4 3.2 1.3l2.4-2.4A8 8 0 0 0 4.1 7.7l3 2.4A5 5 0 0 1 12 6.7Z"/></svg>
                 Google
               </button>
-              <button type="button" onClick={() => navigate('/chatbot')} aria-label="Đăng nhập bằng Microsoft">
+              <button type="button" onClick={() => { setAudience('employee'); navigate('/chatbot') }} aria-label="Đăng nhập bằng Microsoft">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="8" height="8"/><rect x="13" y="3" width="8" height="8"/><rect x="3" y="13" width="8" height="8"/><rect x="13" y="13" width="8" height="8"/></svg>
                 Microsoft
               </button>
@@ -122,6 +179,7 @@ function App() {
       <header className="topbar">
         <a className="brand" href="#">Sovereign Compliance AI</a>
         <div className="header-actions">
+          <span className={`connection-status ${isBackendOnline === false ? 'offline' : ''}`} title={isBackendOnline === null ? 'Đang kiểm tra kết nối' : isBackendOnline ? 'Backend đang hoạt động' : 'Không kết nối được backend'}><i />{isBackendOnline === false ? 'Offline' : isBackendOnline === null ? 'Đang nối' : 'Online'}</span>
           <button className="icon-button" aria-label="Thông báo"><Icon name="bell" /></button>
           <div className="account-menu">
             <span className="account-name">{displayName}</span>
@@ -141,9 +199,23 @@ function App() {
       </header>
 
       <main className="home">
-        <section className="hero">
-          <h1>Chào bạn, tôi có thể giúp gì cho<br />{' '}nghiệp vụ của bạn hôm nay?</h1>
-          <button className="date-picker" type="button"><Icon name="calendar" /><span>Ngày hiệu lực:</span><strong>30/10/2024</strong></button>
+        <section className={`hero ${isLoading || answer || error ? 'has-result' : ''}`}>
+          {!isLoading && !answer && !error && <h1>Chào bạn, tôi có thể giúp gì cho<br />{' '}nghiệp vụ của bạn hôm nay?</h1>}
+          <div className="query-options">
+            <div className="date-picker" aria-label={`Đang xem quy định tại ngày ${asOf}`}><Icon name="calendar" /><span>Đang xem quy định tại ngày</span><strong>{new Intl.DateTimeFormat('en-US').format(new Date(`${asOf}T00:00:00`))}</strong></div>
+          </div>
+          {(isLoading || answer || error) && (
+            <section className={`response result-response ${error ? 'response-error' : ''}`} aria-live="polite">
+              {isLoading ? <div className="result-loading"><span className="result-spinner" />Đang xử lý yêu cầu...</div> : error ? error : (
+                <>
+                  {conflictWarning?.trim() && <div className="conflict-warning"><strong>⚠ Cảnh báo mâu thuẫn</strong><p>{conflictWarning}</p></div>}
+                  <FormattedAnswer content={answer} />
+                  {sources.length > 0 && <details className="source-list"><summary>Nguồn tham khảo <span>{sources.length}</span></summary>{sources.map((source, index) => <SourceCard source={source} key={`${source.clauseId}-${index}`} />)}</details>}
+                  {(requestId || latencyMs !== null) && <div className="response-footer">{requestId && <span>Request ID: {requestId}</span>}{requestId && latencyMs !== null && <i />}{latencyMs !== null && <span>{latencyMs.toLocaleString('vi-VN')} ms</span>}</div>}
+                </>
+              )}
+            </section>
+          )}
           <form className="prompt-box" onSubmit={submit}>
             <textarea aria-label="Câu hỏi nghiệp vụ" value={question} onChange={(e) => setQuestion(e.target.value)} onKeyDown={onKeyDown} placeholder="Nhập câu hỏi hoặc mô tả tình huống nghiệp vụ..." />
             <div className="prompt-tools">
@@ -156,7 +228,6 @@ function App() {
             </div>
           </form>
           <input ref={fileInput} type="file" hidden />
-          {(isLoading || answer || error) && <div className={`response ${error ? 'response-error' : ''}`} aria-live="polite">{isLoading ? 'Đang xử lý yêu cầu...' : error || answer}</div>}
         </section>
       </main>
 

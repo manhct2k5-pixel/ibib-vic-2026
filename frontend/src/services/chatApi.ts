@@ -2,6 +2,10 @@
   clauseId: string
   name: string
   description: string
+  body: string
+  effectiveDate: string | null
+  metricValue: number | null
+  metricUnit: string | null
   isCurrent: boolean
   supersededBy: string | null
 }
@@ -17,7 +21,12 @@ export type ChatResponse = {
 export type ChatOptions = {
   asOf?: string
   mode?: 'system' | 'baseline'
-  audience?: 'employee' | 'customer'
+  audience?: 'manager' | 'employee' | 'customer'
+}
+
+export type BackendHealth = {
+  status: string
+  clauses: number
 }
 
 const API_MODE = import.meta.env.VITE_API_MODE ?? 'mock'
@@ -28,21 +37,72 @@ const API_BASE_URL = (
 
 const REQUEST_TIMEOUT_MS = 15_000
 
+export const checkBackendHealth = async (): Promise<BackendHealth> => {
+  if (API_MODE === 'mock') return { status: 'mock', clauses: 1 }
+  const response = await fetch(`${API_BASE_URL}/health`)
+  if (!response.ok) throw new Error(`Health check lỗi ${response.status}.`)
+  const raw: unknown = await response.json()
+  const data = typeof raw === 'object' && raw !== null ? raw as Record<string, unknown> : {}
+  return {
+    status: typeof data.status === 'string' ? data.status : 'unknown',
+    clauses: typeof data.clauses === 'number' ? data.clauses : 0,
+  }
+}
+
 const createMockResponse = async (
   question: string,
+  options: ChatOptions,
 ): Promise<ChatResponse> => {
   await new Promise((resolve) => window.setTimeout(resolve, 800))
 
+  const managerAnswer = `## Đối chiếu quy định
+### Tầng 1 — Luật ngoài (NHNN)
+- Văn bản: Thông tư 22/2019/TT-NHNN
+- Địa chỉ: Điều 1 — Thông tư 22/2019/TT-NHNN
+- Nội dung: Tổ chức tín dụng phải duy trì tỷ lệ an toàn vốn tối thiểu 9%.
+
+### Tầng 2 — Quy chế nội bộ
+- Văn bản: Quy định nội bộ về tỷ lệ an toàn vốn
+- Địa chỉ: Điều 2 — Quy định nội bộ
+- Nội dung: Ngưỡng kiểm soát nội bộ được áp dụng theo quy chế hiện hành.
+
+## Timeline hiệu lực
+[Thông tư 22/2019 (Hiệu lực gốc)] → [Văn bản sửa đổi hiện hành]
+
+## Phân tích tác động
+### Operational Impact — Đối với ngân hàng
+Cần rà soát ngưỡng kiểm soát và thẩm quyền phê duyệt trong quy trình nội bộ.`
+
+  const employeeAnswer = `## Ý định người dùng
+${question}
+
+## Thực thể và dữ kiện chính
+- Thông tư 22/2019/TT-NHNN
+- Tỷ lệ an toàn vốn tối thiểu: 9%
+- Điều khoản: TT22/Điều 1
+
+## Kết luận nghiệp vụ
+Tổ chức tín dụng phải duy trì tỷ lệ an toàn vốn tối thiểu 9% [TT22/Điều 1].
+
+## Phân tích tác động
+### Obligation Impact — Đối với khách hàng
+Khách hàng cần cung cấp đầy đủ chứng từ theo yêu cầu thẩm định của ngân hàng.
+
+## Timeline hiệu lực
+[Thông tư 22/2019 (Hiệu lực gốc)] → [Văn bản sửa đổi hiện hành]`
+
   return {
-    answer:
-      `Hệ thống đã nhận yêu cầu: "${question}". ` +
-      'Đây là phản hồi mô phỏng để kiểm tra giao diện của Team IBIB.',
+    answer: options.audience === 'manager' ? managerAnswer : employeeAnswer,
     sources: [
       {
         clauseId: 'TT22/Điều 1',
         name: 'Thông tư 22/2019/TT-NHNN',
         description:
           'Tỷ lệ an toàn vốn tối thiểu 9% (dữ liệu mô phỏng cho chế độ mock).',
+        body: 'Tổ chức tín dụng phải duy trì tỷ lệ an toàn vốn tối thiểu 9%.',
+        effectiveDate: '2019-01-01',
+        metricValue: 9,
+        metricUnit: '%',
         isCurrent: true,
         supersededBy: null,
       },
@@ -78,6 +138,30 @@ const parseSources = (value: unknown): SourceItem[] => {
           typeof source.description === 'string'
             ? source.description
             : '',
+        body:
+          typeof source.body === 'string'
+            ? source.body
+            : typeof source.description === 'string'
+              ? source.description
+              : '',
+        effectiveDate:
+          typeof source.effective_date === 'string'
+            ? source.effective_date
+            : typeof source.effectiveDate === 'string'
+              ? source.effectiveDate
+              : null,
+        metricValue:
+          typeof source.metric_value === 'number'
+            ? source.metric_value
+            : typeof source.metricValue === 'number'
+              ? source.metricValue
+              : null,
+        metricUnit:
+          typeof source.metric_unit === 'string'
+            ? source.metric_unit
+            : typeof source.metricUnit === 'string'
+              ? source.metricUnit
+              : null,
         isCurrent:
           typeof source.is_current === 'boolean' ? source.is_current : true,
         supersededBy:
@@ -94,7 +178,7 @@ export const sendChatRequest = async (
   options: ChatOptions = {},
 ): Promise<ChatResponse> => {
   if (API_MODE === 'mock') {
-    return createMockResponse(question)
+    return createMockResponse(question, options)
   }
 
   const controller = new AbortController()
@@ -156,14 +240,20 @@ export const sendChatRequest = async (
       conflictWarning:
         typeof payload.conflictWarning === 'string'
           ? payload.conflictWarning
+          : typeof payload.conflict_warning === 'string'
+            ? payload.conflict_warning
           : null,
       requestId:
         typeof payload.requestId === 'string'
           ? payload.requestId
+          : typeof payload.request_id === 'string'
+            ? payload.request_id
           : undefined,
       latencyMs:
         typeof payload.latencyMs === 'number'
           ? payload.latencyMs
+          : typeof payload.latency_ms === 'number'
+            ? payload.latency_ms
           : undefined,
     }
   } catch (error: unknown) {

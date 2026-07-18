@@ -11,6 +11,8 @@ from __future__ import annotations
 import os
 from contextlib import asynccontextmanager
 from datetime import date
+from time import perf_counter
+from uuid import uuid4
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
@@ -35,13 +37,17 @@ class ChatRequest(BaseModel):
     question: str
     asOf: str | None = None
     mode: str | None = "system"  # benchmark: system|baseline (Epic 4)
-    audience: str | None = "employee"  # employee|customer (phạm vi dữ liệu)
+    audience: str | None = "employee"  # manager|employee|customer
 
 
 class Source(BaseModel):
     clause_id: str
     name: str
     description: str
+    body: str
+    effective_date: str
+    metric_value: float | None = None
+    metric_unit: str | None = None
     is_current: bool = True
     superseded_by: str | None = None
 
@@ -50,6 +56,8 @@ class ChatResponse(BaseModel):
     answer: str
     sources: list[Source]
     conflictWarning: str | None = None
+    requestId: str
+    latencyMs: float
 
 
 def create_app(corpus_path: str | None = None) -> FastAPI:
@@ -77,13 +85,15 @@ def create_app(corpus_path: str | None = None) -> FastAPI:
     @app.get("/api/graph")
     def graph(audience: str = "employee") -> dict:
         # Đồ thị tri thức cho trực quan (FR-12). Suy scope từ audience —
-        # fail-closed như /api/chat: chỉ 'employee' chính xác mới thấy internal.
+        # manager/employee thấy nội bộ; vai trò khác chỉ thấy dữ liệu public.
         repo: Repository = app.state.repo
-        scope = "all" if audience == "employee" else "public"
+        scope = "all" if audience in {"manager", "employee"} else "public"
         return repo.export_graph(scope)
 
     @app.post("/api/chat", response_model=ChatResponse)
     def chat(req: ChatRequest) -> ChatResponse:
+        started_at = perf_counter()
+        request_id = f"req-{uuid4().hex[:12]}"
         repo: Repository = app.state.repo
 
         # Parse as-of (mặc định hôm nay); sai định dạng -> 400 + detail (AD-6)
@@ -95,9 +105,8 @@ def create_app(corpus_path: str | None = None) -> FastAPI:
                 detail="asOf phải theo định dạng YYYY-MM-DD.",
             )
 
-        # Fail-closed: CHỈ 'employee' chính xác mới thấy nội bộ; mọi giá trị
-        # khác (sai chính tả, lạ, None) → chỉ dữ liệu công khai (AD-11).
-        scope = "all" if req.audience == "employee" else "public"
+        # manager/employee thấy nội bộ; mọi giá trị lạ/None → public (AD-11).
+        scope = "all" if req.audience in {"manager", "employee"} else "public"
         # Baseline (RAG thường) vs system: benchmark dùng chung pipeline (AD-3).
         is_baseline = req.mode == "baseline"
         clauses = gather_candidates(repo, req.question, as_of, scope, req.mode or "system")
@@ -107,6 +116,8 @@ def create_app(corpus_path: str | None = None) -> FastAPI:
                 answer="Không tìm thấy điều khoản còn hiệu lực phù hợp với câu hỏi.",
                 sources=[],
                 conflictWarning=None,
+                requestId=request_id,
+                latencyMs=round((perf_counter() - started_at) * 1000, 2),
             )
 
         # Baseline KHÔNG có trí tuệ temporal: view thô (không đánh dấu thay thế),
@@ -122,9 +133,9 @@ def create_app(corpus_path: str | None = None) -> FastAPI:
         # answer = LLM tổng hợp từ các điều khoản đã annotate (AD-7).
         # LLM thật lỗi/timeout → rơi về MockLLM để demo không sập (NFR-3, AD-9, P1).
         try:
-            answer = synthesize(get_llm(), req.question, views)
+            answer = synthesize(get_llm(), req.question, views, req.audience or "employee")
         except Exception:  # noqa: BLE001 — chủ đích: mọi lỗi LLM đều fallback
-            answer = synthesize(MockLLM(), req.question, views)
+            answer = synthesize(MockLLM(), req.question, views, req.audience or "employee")
 
         # Stage conflict_check (AD-3): cảnh báo nếu có 2 quy định cùng hiệu lực
         # mâu thuẫn số liệu ở chủ đề candidate (không rò internal khi customer).
@@ -138,13 +149,21 @@ def create_app(corpus_path: str | None = None) -> FastAPI:
                 clause_id=v.clause.clause_id,
                 name=f"{v.clause.doc_code} — {v.clause.path}",
                 description=v.clause.body,
+                body=v.clause.body,
+                effective_date=v.clause.effective_date.isoformat(),
+                metric_value=v.clause.metric_value,
+                metric_unit=v.clause.metric_unit,
                 is_current=v.is_current,
                 superseded_by=v.superseded_by,
             )
             for v in views
         ]
         return ChatResponse(
-            answer=answer, sources=sources, conflictWarning=conflict_warning
+            answer=answer,
+            sources=sources,
+            conflictWarning=conflict_warning,
+            requestId=request_id,
+            latencyMs=round((perf_counter() - started_at) * 1000, 2),
         )
 
     return app
