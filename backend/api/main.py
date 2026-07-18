@@ -62,6 +62,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.get("/health")
+def health_check():
+    return {
+        "status": "ok",
+        "clauses": len(current_kb.clauses_dict) if current_kb else 0,
+    }
+
+
 class ChatRequest(BaseModel):
     question: str
     asOf: Optional[str] = None

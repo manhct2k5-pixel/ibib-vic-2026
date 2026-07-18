@@ -1,0 +1,9 @@
+# Thêm vào .dockerignore để giảm kích thước image
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+.DS_Store
+.omc
+.env
+tests/
