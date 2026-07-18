@@ -2,8 +2,22 @@
 fastapi
 uvicorn[standard]
 pydantic>=2
-httpx            # AnthropicLLM gọi Messages API
-python-dotenv    # nạp backend/.env (LLM_API_KEY)
+httpx            # AnthropicLLM/OpenAI-compat gọi API
+python-dotenv    # nạp backend/.env (LLM_API_KEY, DATABASE_URL)
+python-multipart # upload PDF (multipart/form-data)
+
+# Database (base DB-backed RAG — PostgreSQL/pgvector qua DATABASE_URL)
+sqlmodel
+sqlalchemy
+psycopg2-binary  # driver postgresql:// cho SQLAlchemy
+pgvector         # cột Vector(768) trong dwh.anh_xa
+rank-bm25        # retrieve BM25 trong KnowledgeBase
+networkx         # đồ thị quan hệ điều khoản
+
+# Ingest tài liệu
+pdfplumber       # bóc tách PDF (admin ingest)
+pypdf            # cắt Điều cho tài liệu phiên (Story 7.6)
+python-docx      # bóc tách .docx
 
 # Test
 pytest

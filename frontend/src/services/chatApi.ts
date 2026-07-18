@@ -18,6 +18,7 @@ export type ChatOptions = {
   asOf?: string
   mode?: 'system' | 'baseline'
   audience?: 'employee' | 'customer'
+  sessionId?: string
 }
 
 const API_MODE = import.meta.env.VITE_API_MODE ?? 'mock'
@@ -114,6 +115,7 @@ export const sendChatRequest = async (
         ...(options.asOf ? { asOf: options.asOf } : {}),
         ...(options.mode ? { mode: options.mode } : {}),
         ...(options.audience ? { audience: options.audience } : {}),
+        ...(options.sessionId ? { sessionId: options.sessionId } : {}),
       }),
       signal: controller.signal,
     })

@@ -1,0 +1,107 @@
+/* Style cho các feature port Epic 2/7 (inline trong chat) — theo accent cam #ff781d. */
+
+/* Ngày hiệu lực: input thay cho text tĩnh */
+.date-picker input[type='date'] {
+  border: 0;
+  background: transparent;
+  color: #141a20;
+  font-size: 10px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+}
+.theme-dark .date-picker input[type='date'] { color: #f2f3f4; color-scheme: dark; }
+
+/* Nút đính kèm (InlineUpload) khớp .left-tools button */
+.inline-upload { display: inline-flex; align-items: center; gap: 6px; }
+.inline-upload button {
+  width: 26px; height: 26px; padding: 0; display: grid; place-items: center;
+  border: 0; border-radius: 50%; color: #ff781d; background: #fff3ea; cursor: pointer;
+  transition: background .15s ease, transform .15s ease;
+}
+.inline-upload button:hover:not(:disabled) { background: #ffe5d2; transform: translateY(-1px); }
+.inline-upload button:disabled { opacity: .5; cursor: default; }
+.inline-upload svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.upload-note { font-size: 10px; color: #2f7d32; }
+.upload-note.error { color: #b42318; }
+
+.left-tools button.pinned { background: #ff781d; color: #fff; }
+
+/* Truy cập nhanh: lịch sử + bookmark */
+.quick-access { width: min(488px, 100%); margin-top: 14px; display: flex; flex-direction: column; gap: 8px; }
+.qa-group { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.qa-label { font-size: 10px; font-weight: 700; color: #59616a; }
+.qa-chip {
+  padding: 4px 10px; border: 1px solid #f1ded1; border-radius: 14px; background: #fff;
+  color: #59616a; font-size: 11px; cursor: pointer; max-width: 260px; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+.qa-chip:hover { border-color: #ff781d; color: #141a20; }
+
+/* Cảnh báo xung đột */
+.conflict-banner {
+  margin-bottom: 10px; padding: 9px 12px; border-radius: 8px;
+  background: #fff4e5; border: 1px solid #ffcaa0; color: #7a3b00;
+  font-size: 11px; line-height: 1.5; white-space: pre-line;
+}
+.answer-text { white-space: pre-line; }
+
+/* Danh sách nguồn */
+.sources { margin-top: 12px; border-top: 1px dashed #e6e8ea; padding-top: 10px; }
+.sources h3 { margin: 0 0 8px; font-size: 12px; color: #141a20; }
+.source-list { display: flex; flex-direction: column; gap: 8px; }
+.source-card { padding: 9px 11px; border: 1px solid #e6e8ea; border-radius: 8px; background: #fbfcfd; }
+.source-card .cid { font-size: 11px; font-weight: 700; color: #ff781d; margin-right: 6px; }
+.source-card .badge { font-size: 9px; font-weight: 700; padding: 1px 7px; border-radius: 10px; }
+.source-card .badge.active { background: #e7f6e9; color: #2f7d32; }
+.source-card .badge.superseded { background: #fdeceb; color: #b42318; }
+.source-card .doc { margin-top: 4px; font-size: 11px; color: #59616a; }
+.source-card .desc { margin-top: 3px; font-size: 11px; color: #4b5560; line-height: 1.5; }
+.source-card .desc.struck { text-decoration: line-through; opacity: .7; }
+
+/* Chip mở văn bản hợp nhất */
+.consolidate-chips { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px; }
+.consolidate-chip {
+  padding: 5px 12px; border: 1px solid #ff781d; border-radius: 14px; background: #fff3ea;
+  color: #c2560f; font-size: 11px; font-weight: 700; cursor: pointer;
+}
+.consolidate-chip:hover, .consolidate-chip.active { background: #ff781d; color: #fff; }
+.consolidate-chip.attached { margin-top: 10px; }
+
+/* Văn bản hợp nhất inline */
+.consolidated-doc {
+  margin-top: 12px; padding: 12px; border: 1px solid #e6e8ea; border-radius: 9px;
+  background: #fff; box-shadow: 0 4px 12px rgba(26,35,44,.05);
+}
+.consolidated-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; margin-bottom: 10px; }
+.consolidated-head strong { font-size: 13px; color: #141a20; }
+.consolidated-sub { display: block; font-size: 10px; color: #59616a; margin-top: 2px; }
+.consolidated-close { border: 0; background: transparent; font-size: 18px; line-height: 1; color: #98a0a8; cursor: pointer; }
+.consolidated-status { font-size: 11px; color: #59616a; }
+.consolidated-status.error { color: #b42318; }
+
+.consolidated-section { padding: 9px 10px; border-radius: 8px; border: 1px solid #eef0f2; margin-bottom: 8px; }
+.consolidated-section.status-superseded, .consolidated-section.status-expired { background: #fbfbfb; }
+.consolidated-section.status-amended { background: #fffaf3; border-color: #ffe0c2; }
+.section-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.section-path { font-size: 11px; font-weight: 700; color: #141a20; }
+.section-badge { font-size: 9px; font-weight: 700; padding: 1px 7px; border-radius: 10px; }
+.section-badge.active { background: #e7f6e9; color: #2f7d32; }
+.section-badge.amended { background: #fff0dd; color: #9a5b00; }
+.section-badge.superseded, .section-badge.expired { background: #fdeceb; color: #b42318; }
+.section-badge.session { background: #eaf1ff; color: #2b58b8; }
+.section-text { font-size: 11px; color: #4b5560; line-height: 1.55; margin: 0; }
+.section-text.struck { text-decoration: line-through; opacity: .65; }
+.section-amend { margin-top: 6px; padding: 7px 9px; border-left: 3px solid #ff781d; background: #fff6ef; border-radius: 0 6px 6px 0; }
+.amend-label { display: block; font-size: 10px; font-weight: 700; color: #c2560f; }
+.amend-note { display: block; font-size: 10px; color: #7a3b00; margin-top: 2px; font-style: italic; }
+.amend-text { font-size: 11px; color: #4b5560; line-height: 1.5; margin: 4px 0 0; }
+
+/* Dark mode */
+.theme-dark .source-card { background: #23272b; border-color: #3b4044; }
+.theme-dark .source-card .doc, .theme-dark .source-card .desc { color: #c8cdd1; }
+.theme-dark .consolidated-doc { background: #24282b; border-color: #3b4044; }
+.theme-dark .consolidated-head strong, .theme-dark .section-path { color: #f2f3f4; }
+.theme-dark .consolidated-section { background: #23272b; border-color: #3b4044; }
+.theme-dark .section-text, .theme-dark .amend-text { color: #d8dcdf; }
+.theme-dark .qa-chip { background: #272b2f; border-color: #454a4f; color: #c8cdd1; }

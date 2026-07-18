@@ -8,6 +8,7 @@ from pydantic import BaseModel
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from backend.kb.kb import KnowledgeBase, tokenize_vietnamese
+from backend.pipeline.session_retrieve import retrieve_session
 
 class Candidate(BaseModel):
     clause_id: str
@@ -30,7 +31,8 @@ def run_pipeline(
     mode: str,
     role: str,
     kb: KnowledgeBase,
-    department: Optional[str] = None
+    department: Optional[str] = None,
+    session_clauses: Optional[List[Any]] = None,
 ) -> Dict[str, Any]:
     # Parse as_of date
     try:
@@ -50,6 +52,21 @@ def run_pipeline(
     if not is_baseline:
         candidates = expand_stage(candidates, kb, role, department)
 
+    # 2b. SESSION OVERLAY (AD-13): trộn tài liệu đính kèm phiên (không ở baseline —
+    # RAG thường không có tài liệu người dùng tự đính kèm). Clause phiên luôn coi
+    # là đang hiệu lực (không suy quan hệ liên-văn-bản), không đè clause global.
+    session_ids: set = set()
+    if session_clauses and not is_baseline:
+        session_hits = session_retrieve_stage(
+            session_clauses, question, as_of, role
+        )
+        existing = {c.clause_id for c in candidates}
+        for c in session_hits:
+            if c.clause_id not in existing:
+                candidates.append(c)
+                existing.add(c.clause_id)
+            session_ids.add(c.clause_id)
+
     # 3. TEMPORAL FILTER STAGE
     active_candidates = []
     superseded_candidates = []
@@ -59,7 +76,8 @@ def run_pipeline(
         active_candidates = candidates
     else:
         for c in candidates:
-            if kb.is_active(c.clause_id, as_of):
+            # Clause phiên bỏ qua lọc temporal của KB (không nằm trong clauses_dict).
+            if c.clause_id in session_ids or kb.is_active(c.clause_id, as_of):
                 active_candidates.append(c)
             else:
                 superseded_candidates.append(c)
@@ -221,6 +239,35 @@ def expand_stage(
                             existing_ids.add(v)
     return expanded
 
+def session_retrieve_stage(
+    session_clauses: List[Any],
+    question: str,
+    as_of: date,
+    role: str,
+) -> List[Candidate]:
+    """Khớp từ khóa tài liệu phiên → Candidate (AD-13). Đánh dấu why.stage=session."""
+    hits = retrieve_session(session_clauses, question, as_of, role)
+    out: List[Candidate] = []
+    for c in hits:
+        out.append(
+            Candidate(
+                clause_id=c.clause_id,
+                score=0.5,
+                text=c.text,
+                doc_code=c.doc_code,
+                path=c.path,
+                effective_date=c.effective_date,
+                expiry_date=c.expiry_date,
+                topic=c.topic,
+                visibility=c.visibility,
+                department=getattr(c, "department", "phap_ly"),
+                metric_value=c.metric_value,
+                metric_unit=c.metric_unit,
+                why={"stage": "session", "source": "attached_document"},
+            )
+        )
+    return out
+
 def conflict_check_stage(active_candidates: List[Candidate]) -> Optional[str]:
     # Group by topic (skip empty/default topics)
     by_topic: Dict[str, List[Candidate]] = {}
@@ -265,7 +312,11 @@ def compile_sources(
             doc_title = get_doc_title(c.doc_code, f"Văn bản {c.doc_code}")
             sources.append({
                 "name": f"{c.clause_id} — {c.path}",
-                "description": f"{doc_title}. Tầm ảnh hưởng: {c.visibility.upper()} | Ban: {c.department.upper()}. Trạng thái: Đang hiệu lực (Mốc: {c.effective_date})"
+                "description": f"{doc_title}. Tầm ảnh hưởng: {c.visibility.upper()} | Ban: {c.department.upper()}. Trạng thái: Đang hiệu lực (Mốc: {c.effective_date})",
+                "clause_id": c.clause_id,
+                "doc_code": c.doc_code,
+                "is_current": True,
+                "superseded_by": None,
             })
             added_ids.add(c.clause_id)
 
@@ -276,7 +327,11 @@ def compile_sources(
                 doc_title = get_doc_title(c.doc_code, f"Văn bản {c.doc_code}")
                 sources.append({
                     "name": f"{c.clause_id} — {c.path}",
-                    "description": f"{doc_title}. Tầm ảnh hưởng: {c.visibility.upper()} | Ban: {c.department.upper()}. Trạng thái: Đã hết hiệu lực / Bị thay thế"
+                    "description": f"{doc_title}. Tầm ảnh hưởng: {c.visibility.upper()} | Ban: {c.department.upper()}. Trạng thái: Đã hết hiệu lực / Bị thay thế",
+                    "clause_id": c.clause_id,
+                    "doc_code": c.doc_code,
+                    "is_current": False,
+                    "superseded_by": next((u for u, _v, d in kb.graph.in_edges(c.clause_id, data=True) if d.get("type") == "SUPERSEDES"), None) if c.clause_id in kb.graph else None,
                 })
                 added_ids.add(c.clause_id)
 
@@ -292,7 +347,11 @@ def compile_sources(
                                 doc_title = get_doc_title(old_clause.doc_code, f"Văn bản {old_clause.doc_code}")
                                 sources.append({
                                     "name": f"{old_clause.clause_id} — {old_clause.path}",
-                                    "description": f"{doc_title}. Tầm ảnh hưởng: {old_clause.visibility.upper()} | Ban: {old_clause.department.upper()}. Trạng thái: Đã hết hiệu lực / Bị thay thế"
+                                    "description": f"{doc_title}. Tầm ảnh hưởng: {old_clause.visibility.upper()} | Ban: {old_clause.department.upper()}. Trạng thái: Đã hết hiệu lực / Bị thay thế",
+                                    "clause_id": old_clause.clause_id,
+                                    "doc_code": old_clause.doc_code,
+                                    "is_current": False,
+                                    "superseded_by": c.clause_id,
                                 })
                                 added_ids.add(old_clause.clause_id)
 

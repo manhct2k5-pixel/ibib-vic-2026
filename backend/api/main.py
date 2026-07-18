@@ -2,7 +2,7 @@ import os
 import sys
 from datetime import date
 from typing import Optional, List, Dict, Any
-from fastapi import FastAPI, HTTPException, Depends, UploadFile, File
+from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlmodel import Session, select
@@ -16,6 +16,14 @@ from backend.api.database import init_db, engine
 from backend.api.models import Document, Clause, Edge, ClauseEmbedding, StagingExternal, StagingInternal, AuditLog
 from backend.ingest.extractor import process_pdf_ingestion
 from backend.kb.vector_helper import get_text_embedding
+from backend.pipeline.consolidate import consolidate_document
+from backend.kb.session_store import (
+    SessionClause,
+    get_session_clauses,
+    put_session_clauses,
+)
+from backend.ingest.pdf_ingest import pdf_to_session_clauses
+from backend.providers.llm import get_llm
 
 # Initialize database tables on startup
 try:
@@ -50,6 +58,7 @@ class ChatRequest(BaseModel):
     role: Optional[str] = "employee"  # "employee" | "customer"
     audience: Optional[str] = None   # alias for role / access control
     department: Optional[str] = None # "tin_dung" | "quan_ly_rui_ro" | "phap_ly"
+    sessionId: Optional[str] = None  # tài liệu đính kèm phiên (AD-13, Story 7.6)
 
 @app.get("/api/graph")
 def get_graph_endpoint(audience: Optional[str] = "employee"):
@@ -106,6 +115,9 @@ def chat_endpoint(req: ChatRequest):
     if target_role not in ("employee", "staff"):
         target_role = "customer"
         
+    # AD-13: tài liệu đính kèm phiên (không persist) — trộn read-only vào pipeline.
+    session_clauses = get_session_clauses(req.sessionId) if req.sessionId else None
+
     try:
         response = run_pipeline(
             question=req.question,
@@ -113,7 +125,8 @@ def chat_endpoint(req: ChatRequest):
             mode=req.mode or "system",
             role=target_role,
             kb=current_kb,
-            department=req.department
+            department=req.department,
+            session_clauses=session_clauses
         )
         return response
     except Exception as e:
@@ -413,6 +426,121 @@ def get_clause_timeline(clause_id: str):
             "status": "active" if current_kb.is_active(c.clause_id, date.today()) else "superseded"
         })
     return timeline
+
+@app.get("/api/consolidate")
+def consolidate_endpoint(
+    docCode: str = "",
+    asOf: Optional[str] = None,
+    audience: Optional[str] = None,
+    role: Optional[str] = "employee",
+    sessionId: str = "",
+):
+    """Văn bản hợp nhất của một văn bản gốc (FR-17, Story 7.3).
+
+    Gộp các điều khoản của `docCode`, đánh dấu active/amended/superseded dựa trên
+    quan hệ AMENDS/SUPERSEDES + is_active(asOf). `sessionId` → gộp read-only clause
+    phiên đính kèm (AD-13). Scope fail-closed: chỉ 'employee'/'staff' thấy internal.
+    """
+    if not docCode:
+        raise HTTPException(status_code=400, detail="Thiếu tham số docCode.")
+    try:
+        as_of = date.fromisoformat(asOf) if asOf else date.today()
+    except ValueError:
+        raise HTTPException(
+            status_code=400, detail="asOf phải theo định dạng YYYY-MM-DD."
+        )
+    target_role = audience or role or "employee"
+    if target_role not in ("employee", "staff"):
+        target_role = "customer"
+    session_clauses = get_session_clauses(sessionId) if sessionId else None
+    result = consolidate_document(
+        current_kb, docCode, as_of, target_role, session_clauses
+    )
+    if not result["sections"]:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Không tìm thấy điều khoản nào của văn bản '{docCode}'.",
+        )
+    return result
+
+class SessionUploadRequest(BaseModel):
+    sessionId: str
+    clauses: List[Dict[str, Any]]  # clause thô; parse lỏng, bỏ qua clause hỏng
+
+def _parse_session_clause(raw: Dict[str, Any]) -> SessionClause:
+    """Parse dict thô → SessionClause. Chấp nhận 'text' hoặc 'body'. Ném lỗi nếu thiếu."""
+    text = raw.get("text") or raw.get("body")
+    doc_code = raw["doc_code"]
+    path = raw["path"]
+    clause_id = raw.get("clause_id") or f"{doc_code}/{path}"
+    eff = raw["effective_date"]
+    exp = raw.get("expiry_date")
+    if not text or not doc_code or not path:
+        raise ValueError("Thiếu trường bắt buộc (text/doc_code/path).")
+    return SessionClause(
+        clause_id=clause_id,
+        doc_code=doc_code,
+        path=path,
+        text=text,
+        effective_date=date.fromisoformat(eff),
+        expiry_date=date.fromisoformat(exp) if exp else None,
+        topic=raw.get("topic", ""),
+        visibility=raw.get("visibility", "public"),
+        metric_value=raw.get("metric_value"),
+        metric_unit=raw.get("metric_unit"),
+        department=raw.get("department", "phap_ly"),
+    )
+
+@app.post("/api/session/upload")
+def session_upload(req: SessionUploadRequest):
+    """Đính kèm tài liệu theo phiên bằng JSON (FR-18, AD-13). KHÔNG persist vào DB.
+
+    Clause hỏng (thiếu field/sai định dạng) bị bỏ qua, báo số nạp được.
+    """
+    if not req.sessionId:
+        raise HTTPException(status_code=400, detail="Thiếu sessionId.")
+    parsed: List[SessionClause] = []
+    for raw in req.clauses:
+        try:
+            parsed.append(_parse_session_clause(raw))
+        except (KeyError, ValueError, TypeError):
+            continue
+    total = put_session_clauses(req.sessionId, parsed)
+    return {
+        "sessionId": req.sessionId,
+        "added": len(parsed),
+        "skipped": len(req.clauses) - len(parsed),
+        "sessionClauses": total,
+    }
+
+@app.post("/api/session/upload-pdf")
+async def session_upload_pdf(
+    sessionId: str = Form(...),
+    file: UploadFile = File(...),
+    docCode: str = Form(""),
+):
+    """PDF số → cắt theo Điều + LLM trích hiệu lực → clause phiên (FR-18, AD-13)."""
+    if not sessionId:
+        raise HTTPException(status_code=400, detail="Thiếu sessionId.")
+    data = await file.read()
+    dc = docCode or (file.filename or "TAILIEU").rsplit(".", 1)[0]
+    clauses, meta = pdf_to_session_clauses(data, dc, get_llm())
+    if not clauses:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Không trích được điều khoản. PDF có thể là bản scan/ảnh "
+                "hoặc không có cấu trúc 'Điều N'."
+            ),
+        )
+    total = put_session_clauses(sessionId, clauses)
+    return {
+        "sessionId": sessionId,
+        "docCode": dc,
+        "added": len(clauses),
+        "sessionClauses": total,
+        **meta,
+    }
 
 if __name__ == "__main__":
     import uvicorn
