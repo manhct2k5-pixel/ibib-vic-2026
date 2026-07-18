@@ -4,7 +4,7 @@ const createContextMenu = () => {
   chrome.contextMenus.removeAll(() => {
     chrome.contextMenus.create({
       id: MENU_ID,
-      title: 'Hỏi Sovereign Compliance AI về “%s”',
+      title: 'Hỏi IBIB về “%s”',
       contexts: ['selection'],
     })
   })

@@ -20,7 +20,7 @@
     }
     const panel = document.createElement('aside')
     panel.id = PANEL_ID
-    panel.setAttribute('aria-label', 'Sovereign Compliance AI')
+    panel.setAttribute('aria-label', 'IBIB')
     const close = document.createElement('button')
     close.type = 'button'
     close.className = 'sovereign-panel-close'
@@ -30,7 +30,7 @@
     close.addEventListener('click', removePanel)
     const frame = document.createElement('iframe')
     frame.src = chrome.runtime.getURL('sidepanel.html')
-    frame.title = 'Sovereign Compliance AI'
+    frame.title = 'IBIB'
     panel.append(close, frame)
     document.documentElement.append(panel)
     document.getElementById(BUBBLE_ID)?.setAttribute('aria-expanded', 'true')
@@ -46,7 +46,7 @@
     const bubble = document.createElement('button')
     bubble.id = BUBBLE_ID
     bubble.type = 'button'
-    bubble.title = 'Mở Sovereign Compliance AI'
+    bubble.title = 'Mở IBIB'
     bubble.setAttribute('aria-label', 'Mở trợ lý AI')
     bubble.setAttribute('aria-expanded', 'false')
     bubble.dataset.extensionAction = 'toggle-compliance-copilot'
@@ -128,7 +128,7 @@
       const button = document.createElement('button')
       button.id = BUTTON_ID
       button.type = 'button'
-      button.title = 'Đưa đoạn chọn vào Sovereign Compliance AI'
+      button.title = 'Đưa đoạn chọn vào IBIB'
       button.setAttribute('aria-label', 'Đưa đoạn chọn vào chat')
       button.innerHTML = '<span>◆</span><b>Hỏi AI</b>'
       button.style.left = `${Math.min(window.innerWidth - 88, Math.max(8, rect.right + window.scrollX - 76))}px`

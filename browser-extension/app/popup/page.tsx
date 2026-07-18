@@ -31,5 +31,5 @@ export default function PopupPage() {
     window.close()
   }
 
-  return <main className="popup-page"><div className="brand-mark">AI</div><strong>Sovereign Compliance AI</strong><p>Bật bóng chat để mở trợ lý ngay trên mọi trang web.</p><label className="bubble-toggle"><span><b>Bóng chat trên trang</b><small>{enabled ? 'Đang bật' : 'Đang tắt'}</small></span><input type="checkbox" checked={enabled} onChange={() => void toggleBubble()} /><i /></label><button type="button" onClick={openPanel}>Mở trợ lý ngay</button></main>
+  return <main className="popup-page"><div className="brand-mark">AI</div><strong>IBIB</strong><p>Bật bóng chat để mở trợ lý ngay trên mọi trang web.</p><label className="bubble-toggle"><span><b>Bóng chat trên trang</b><small>{enabled ? 'Đang bật' : 'Đang tắt'}</small></span><input type="checkbox" checked={enabled} onChange={() => void toggleBubble()} /><i /></label><button type="button" onClick={openPanel}>Mở trợ lý ngay</button></main>
 }
