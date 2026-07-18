@@ -14,12 +14,16 @@ Lưu 3 thứ song song theo sessionId:
 
 from __future__ import annotations
 
+import threading
 from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import date
 from typing import Optional
 
 _MAX_SESSIONS = 50  # cap số phiên giữ đồng thời (evict LRU)
+
+# Khóa dùng chung: OCR chạy ở thread nền ghi vào store song song main thread.
+_lock = threading.Lock()
 
 _store: "OrderedDict[str, list[SessionClause]]" = OrderedDict()
 _docs: "OrderedDict[str, dict[str, SessionDoc]]" = OrderedDict()
@@ -92,48 +96,53 @@ def _evict() -> None:
 
 def put_session_clauses(session_id: str, clauses: list[SessionClause]) -> int:
     """Gộp thêm clause vào phiên (không persist). Trả tổng số clause của phiên."""
-    if session_id in _store:
-        _store.move_to_end(session_id)
-        _store[session_id].extend(clauses)
-    else:
-        _store[session_id] = list(clauses)
-        _evict()
-    return len(_store[session_id])
+    with _lock:
+        if session_id in _store:
+            _store.move_to_end(session_id)
+            _store[session_id].extend(clauses)
+        else:
+            _store[session_id] = list(clauses)
+            _evict()
+        return len(_store[session_id])
 
 
 def get_session_clauses(session_id: str) -> list[SessionClause]:
     """Lấy clause của phiên (rỗng nếu không có). Không rò sang phiên khác."""
-    if not session_id or session_id not in _store:
-        return []
-    _store.move_to_end(session_id)
-    return list(_store[session_id])
+    with _lock:
+        if not session_id or session_id not in _store:
+            return []
+        _store.move_to_end(session_id)
+        return list(_store[session_id])
 
 
 def put_session_doc(
     session_id: str, doc: SessionDoc, relations: Optional[list[SessionRelation]] = None
 ) -> None:
     """Lưu metadata 1 văn bản + quan hệ của nó vào phiên (doc_code đè)."""
-    if session_id not in _store:
-        _store[session_id] = []
-        _evict()
-    _docs.setdefault(session_id, {})[doc.doc_code] = doc
-    if relations:
-        _relations.setdefault(session_id, []).extend(relations)
-    _touch(session_id)
+    with _lock:
+        if session_id not in _store:
+            _store[session_id] = []
+            _evict()
+        _docs.setdefault(session_id, {})[doc.doc_code] = doc
+        if relations:
+            _relations.setdefault(session_id, []).extend(relations)
+        _touch(session_id)
 
 
 def get_session_docs(session_id: str) -> list[SessionDoc]:
-    if not session_id or session_id not in _docs:
-        return []
-    _touch(session_id)
-    return list(_docs[session_id].values())
+    with _lock:
+        if not session_id or session_id not in _docs:
+            return []
+        _touch(session_id)
+        return list(_docs[session_id].values())
 
 
 def get_session_relations(session_id: str) -> list[SessionRelation]:
-    if not session_id or session_id not in _relations:
-        return []
-    _touch(session_id)
-    return list(_relations[session_id])
+    with _lock:
+        if not session_id or session_id not in _relations:
+            return []
+        _touch(session_id)
+        return list(_relations[session_id])
 
 
 def remove_session_doc(session_id: str, doc_code: str) -> bool:
@@ -142,23 +151,25 @@ def remove_session_doc(session_id: str, doc_code: str) -> bool:
     Trả True nếu có xoá được văn bản. Quan hệ tới văn bản khác (to_doc) được giữ
     nếu văn bản nguồn còn; chỉ bỏ quan hệ mà from_doc == doc_code.
     """
-    docs = _docs.get(session_id)
-    if not docs or doc_code not in docs:
-        return False
-    del docs[doc_code]
-    if session_id in _store:
-        _store[session_id] = [
-            c for c in _store[session_id] if c.doc_code != doc_code
-        ]
-    if session_id in _relations:
-        _relations[session_id] = [
-            r for r in _relations[session_id] if r.from_doc != doc_code
-        ]
-    _touch(session_id)
-    return True
+    with _lock:
+        docs = _docs.get(session_id)
+        if not docs or doc_code not in docs:
+            return False
+        del docs[doc_code]
+        if session_id in _store:
+            _store[session_id] = [
+                c for c in _store[session_id] if c.doc_code != doc_code
+            ]
+        if session_id in _relations:
+            _relations[session_id] = [
+                r for r in _relations[session_id] if r.from_doc != doc_code
+            ]
+        _touch(session_id)
+        return True
 
 
 def clear_session(session_id: str) -> None:
-    _store.pop(session_id, None)
-    _docs.pop(session_id, None)
-    _relations.pop(session_id, None)
+    with _lock:
+        _store.pop(session_id, None)
+        _docs.pop(session_id, None)
+        _relations.pop(session_id, None)

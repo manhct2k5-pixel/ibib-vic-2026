@@ -174,6 +174,12 @@ def _doc_code_from_filename(filename: str) -> str:
     return ""
 
 
+def doc_code_from_filename(filename: str) -> str:
+    """Mã văn bản suy từ TÊN FILE (không cần đọc nội dung → không OCR). Trả
+    'TAILIEU' nếu không nhận dạng được. Dùng để trả docCode ngay khi upload nền."""
+    return _doc_code_from_filename(filename) or "TAILIEU"
+
+
 def _regex_doc_code(text: str, filename: str) -> str:
     # Ưu tiên tên file (ổn định hơn text OCR nhiễu)
     fn = _doc_code_from_filename(filename)

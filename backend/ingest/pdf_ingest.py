@@ -51,12 +51,17 @@ def _extract_text_native(pdf_bytes: bytes) -> str:
     return "\n".join(parts)
 
 
+# --oem 1: chỉ engine LSTM (nhanh hơn legacy+LSTM); --psm 6: coi trang là 1 khối
+# văn bản đồng nhất (hợp văn bản pháp lý 1 cột) → nhanh & chính xác hơn.
+_TESS_CONFIG = "--oem 1 --psm 6"
+
+
 def _ocr_one_page(args) -> tuple[int, str]:
     i, img = args
     import pytesseract
 
     try:
-        return i, pytesseract.image_to_string(img, lang="vie")
+        return i, pytesseract.image_to_string(img, lang="vie", config=_TESS_CONFIG)
     except Exception:  # noqa: BLE001 — 1 trang lỗi không chặn cả file
         return i, ""
 
@@ -87,7 +92,10 @@ def _ocr_pdf(pdf_bytes: bytes) -> str:
             batch = []
             for i in range(start, min(start + _OCR_WORKERS, n)):
                 try:
-                    batch.append((i, pdf[i].render(scale=_OCR_SCALE).to_pil()))
+                    # render ảnh XÁM (grayscale): render nhanh hơn, ảnh nhẹ RAM hơn,
+                    # tesseract OCR nhanh hơn mà không giảm độ chính xác chữ.
+                    img = pdf[i].render(scale=_OCR_SCALE, grayscale=True).to_pil()
+                    batch.append((i, img))
                 except Exception:  # noqa: BLE001
                     continue
             # OCR cả lô song song, rồi giải phóng ảnh (batch ra khỏi scope)
