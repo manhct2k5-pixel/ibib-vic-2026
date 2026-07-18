@@ -123,6 +123,14 @@ def run_pipeline(
         "answer": answer,
         "sources": sources,
         "conflictWarning": conflict_warning,
+        "confidence": (
+            "Cần kiểm tra xung đột"
+            if conflict_warning
+            else "Có nguồn đối chiếu"
+            if active_candidates
+            else "Chưa đủ dữ liệu"
+        ),
+        "answerType": "Tra cứu quy định",
         "requestId": f"req-{int(datetime.now().timestamp())}",
         "latencyMs": latency_ms
     }
@@ -307,6 +315,7 @@ def compile_sources(
             sources.append({
                 "name": f"{c.clause_id} — {c.path}",
                 "description": f"{doc_title}. Tầm ảnh hưởng: {c.visibility.upper()} | Ban: {c.department.upper()}. Trạng thái: Đang hiệu lực (Mốc: {c.effective_date})",
+                "body": c.text,
                 "clause_id": c.clause_id,
                 "doc_code": c.doc_code,
                 "is_current": True,
@@ -322,6 +331,7 @@ def compile_sources(
                 sources.append({
                     "name": f"{c.clause_id} — {c.path}",
                     "description": f"{doc_title}. Tầm ảnh hưởng: {c.visibility.upper()} | Ban: {c.department.upper()}. Trạng thái: Đã hết hiệu lực / Bị thay thế",
+                    "body": c.text,
                     "clause_id": c.clause_id,
                     "doc_code": c.doc_code,
                     "is_current": False,
@@ -342,6 +352,7 @@ def compile_sources(
                                 sources.append({
                                     "name": f"{old_clause.clause_id} — {old_clause.path}",
                                     "description": f"{doc_title}. Tầm ảnh hưởng: {old_clause.visibility.upper()} | Ban: {old_clause.department.upper()}. Trạng thái: Đã hết hiệu lực / Bị thay thế",
+                                    "body": old_clause.text,
                                     "clause_id": old_clause.clause_id,
                                     "doc_code": old_clause.doc_code,
                                     "is_current": False,

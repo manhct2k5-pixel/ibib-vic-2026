@@ -1,10 +1,10 @@
 # Sovereign Compliance AI
 
-Nền tảng trợ lý tuân thủ dành cho ngân hàng, được Team IBIB phát triển trong khuôn khổ Vietnam Innovation Challenge 2026.
+Nền tảng trợ lý tuân thủ dành cho ngân hàng, được Team SovAI phát triển trong khuôn khổ Vietnam Innovation Challenge 2026.
 
 Hệ thống hỗ trợ tra cứu quy định theo ngày hiệu lực, đối chiếu nguồn trích dẫn, phát hiện nội dung mâu thuẫn, ngăn sử dụng tài liệu hết hiệu lực và quản trị vòng đời tài liệu. Người dùng có thể sử dụng chatbot trên web hoặc tra cứu trực tiếp khi đang đọc tài liệu bằng browser extension.
 
-## Thành viên Team IBIB
+## Thành viên Team SovAI
 
 - Bảo
 - Mạnh Phan
