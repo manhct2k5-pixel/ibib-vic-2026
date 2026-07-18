@@ -9,7 +9,7 @@ type HistoryEntry = { question: string; answer?: string; at: number }
 type PageContext = { title: string; url: string; favIconUrl?: string }
 type PageExtract = { ok: boolean; title?: string; url?: string; text?: string; error?: string }
 
-const DEFAULTS: Settings = { apiUrl: 'http://localhost:8000', audience: 'employee' }
+const DEFAULTS: Settings = { apiUrl: 'https://ibib-vic-2026.onrender.com', audience: 'employee' }
 const HOME_URL = 'http://localhost:5173/chatbot'
 const LOGIN_URL = 'http://localhost:5173/login'
 const storageGet = <T,>(keys: string[]) => new Promise<T>((resolve) => chrome.storage.local.get(keys, (value) => resolve(value as T)))
