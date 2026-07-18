@@ -7,7 +7,10 @@ services:
     runtime: docker
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
-    plan: free  # Đổi thành "starter" ($7/tháng) nếu cần tốc độ ổn định hơn
+    # QUAN TRỌNG: free = 0.5 CPU (shared) + 512MB RAM → OCR (PDF scan/font hỏng)
+    # RẤT CHẬM và dễ OOM. Muốn upload file cần OCR nhanh/ổn định → đổi "starter"
+    # ($7/tháng) hoặc "standard" (1 CPU, 2GB) trở lên.
+    plan: free
     envVars:
       - key: LLM_API_KEY
         sync: false  # Nhập thủ công trên Render Dashboard (bảo mật)
@@ -17,4 +20,12 @@ services:
         value: https://mkp-api.fptcloud.com/v1/
       - key: DATABASE_URL
         sync: false  # Nhập thủ công trên Render Dashboard (bảo mật)
+      # OCR — tinh chỉnh cho máy chủ yếu (free): 1 luồng tránh OOM, ít trang, scale
+      # thấp hơn. Máy mạnh (starter+) có thể tăng OCR_WORKERS=2-4.
+      - key: OCR_WORKERS
+        value: "1"
+      - key: OCR_MAX_PAGES
+        value: "30"
+      - key: OCR_SCALE
+        value: "1.8"
     healthCheckPath: /health

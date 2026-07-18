@@ -1,12 +1,17 @@
 import os
 import sys
 import re
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime
 from typing import Optional, List, Dict, Any
 from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from sqlmodel import Session, select
+
+# Executor xử lý NỀN: OCR/parse PDF nặng chạy tách khỏi request để không timeout.
+# max_workers nhỏ vì mỗi job đã tự OCR song song bên trong (và máy chủ có thể yếu).
+_upload_pool = ThreadPoolExecutor(max_workers=2)
 
 # Add root folder to sys.path to enable backend imports
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -34,7 +39,11 @@ from backend.kb.session_store import (
     remove_session_doc,
 )
 from backend.ingest.pdf_ingest import clauses_from_text, extract_text
-from backend.ingest.doc_analyze import analyze_document, quick_metadata
+from backend.ingest.doc_analyze import (
+    analyze_document,
+    doc_code_from_filename,
+    quick_metadata,
+)
 from backend.providers.llm import get_llm, is_configured
 
 # Initialize database tables on startup
@@ -621,59 +630,50 @@ def session_upload(req: SessionUploadRequest):
         "sessionClauses": total,
     }
 
+def _process_upload(session_id: str, data: bytes, filename: str, dc: str) -> None:
+    """Chạy NỀN: đọc PDF (OCR nếu cần — NẶNG) + cắt Điều → lưu clause + doc vào
+    phiên. Lỗi OCR/parse chỉ bỏ qua file đó, KHÔNG làm sập server."""
+    try:
+        text = extract_text(data)  # OCR fallback bên trong (có thể lâu)
+        meta = quick_metadata(text, filename)
+        eff = meta["effective_date"] or date.today()
+        clauses = clauses_from_text(text, dc, eff)
+        if not clauses:
+            return  # scan không đọc được → doc không xuất hiện (không có FE báo lỗi)
+        put_session_clauses(session_id, clauses)
+        doc = SessionDoc(
+            doc_code=dc,
+            title=dc,  # tiêu đề đầy đủ có sau khi phân tích LLM (lúc gửi)
+            doc_type="",
+            issuer="",
+            issue_date=None,
+            effective_date=eff,
+            num_clauses=len(clauses),
+            filename=filename,
+            raw_text=meta["head"],
+            analyzed=False,
+        )
+        put_session_doc(session_id, doc, [])
+    except Exception:  # noqa: BLE001 — job nền không được ném lỗi ra ngoài
+        pass
+
+
 @app.post("/api/session/upload-pdf")
 async def session_upload_pdf(
     sessionId: str = Form(...),
     file: UploadFile = File(...),
     docCode: str = Form(""),
 ):
-    """PDF số → phân tích (metadata + quan hệ liên-văn-bản) + cắt Điều → clause
-    phiên (FR-17/FR-18, AD-13). Dùng dữ liệu TỪ FILE UPLOAD, không đụng DB."""
+    """PDF → cắt Điều → clause phiên (FR-17/FR-18, AD-13). OCR/parse chạy NỀN để
+    tránh timeout với file scan nặng; trả về ngay với docCode (suy từ tên file).
+    Điều khoản xuất hiện trong phiên khi job nền xong."""
     if not sessionId:
         raise HTTPException(status_code=400, detail="Thiếu sessionId.")
     data = await file.read()
     filename = file.filename or "TAILIEU.pdf"
-    text = extract_text(data)
-
-    # NHANH: chỉ cắt Điều + metadata regex, KHÔNG gọi LLM. Phân tích quan hệ (LLM)
-    # để dành cho lúc gửi chat qua POST /api/session/analyze.
-    meta = quick_metadata(text, filename)
-    dc = docCode or meta["doc_code"]
-    eff = meta["effective_date"] or date.today()
-
-    clauses = clauses_from_text(text, dc, eff)
-    if not clauses:
-        raise HTTPException(
-            status_code=422,
-            detail=(
-                "Không trích được điều khoản. PDF có thể là bản scan/ảnh, sai mã "
-                "font, hoặc không có cấu trúc 'Điều N'."
-            ),
-        )
-    total = put_session_clauses(sessionId, clauses)
-
-    doc = SessionDoc(
-        doc_code=dc,
-        title=dc,  # tiêu đề đầy đủ sẽ có sau khi phân tích LLM
-        doc_type="",
-        issuer="",
-        issue_date=None,
-        effective_date=eff,
-        num_clauses=len(clauses),
-        filename=filename,
-        raw_text=meta["head"],
-        analyzed=False,
-    )
-    put_session_doc(sessionId, doc, [])
-
-    return {
-        "sessionId": sessionId,
-        "docCode": dc,
-        "added": len(clauses),
-        "sessionClauses": total,
-        "analyzed": False,
-        "chars": len(text),
-    }
+    dc = docCode or doc_code_from_filename(filename)
+    _upload_pool.submit(_process_upload, sessionId, data, filename, dc)
+    return {"sessionId": sessionId, "docCode": dc, "status": "processing"}
 
 
 def _run_analysis(sessionId: str) -> dict:

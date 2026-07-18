@@ -28,7 +28,18 @@ _EFFECT_RE = re.compile(r"hiệu lực[^.]{0,80}", re.IGNORECASE)
 _MAX_LLM_CHARS = 6000
 
 
-_OCR_MAX_PAGES = 60  # chặn trần thời gian OCR (mỗi trang ~2-5s)
+import os
+
+# Cấu hình OCR qua ENV (quan trọng khi deploy máy chủ yếu — Render free 0.5CPU/512MB):
+#   OCR_MAX_PAGES: trần số trang OCR (mặc định 40)
+#   OCR_SCALE: độ phân giải render (2.0 nét; 1.5 nhẹ RAM/CPU hơn)
+#   OCR_WORKERS: số luồng OCR song song. Máy YẾU nên đặt 1 (tránh OOM); máy nhiều
+#                core đặt 2-4 để nhanh. Mặc định co theo số CPU.
+_OCR_MAX_PAGES = int(os.environ.get("OCR_MAX_PAGES", "40"))
+_OCR_SCALE = float(os.environ.get("OCR_SCALE", "2.0"))
+_OCR_WORKERS = int(
+    os.environ.get("OCR_WORKERS", str(max(1, min(4, (os.cpu_count() or 2)))))
+)
 
 
 def _extract_text_native(pdf_bytes: bytes) -> str:
@@ -40,8 +51,9 @@ def _extract_text_native(pdf_bytes: bytes) -> str:
     return "\n".join(parts)
 
 
-_OCR_SCALE = 2.0  # đủ nét cho tesseract, nhanh hơn 2.5
-_OCR_WORKERS = 4  # OCR song song nhiều trang (tesseract chạy tiến trình riêng)
+# --oem 1: chỉ engine LSTM (nhanh hơn legacy+LSTM); --psm 6: coi trang là 1 khối
+# văn bản đồng nhất (hợp văn bản pháp lý 1 cột) → nhanh & chính xác hơn.
+_TESS_CONFIG = "--oem 1 --psm 6"
 
 
 def _ocr_one_page(args) -> tuple[int, str]:
@@ -49,15 +61,17 @@ def _ocr_one_page(args) -> tuple[int, str]:
     import pytesseract
 
     try:
-        return i, pytesseract.image_to_string(img, lang="vie")
+        return i, pytesseract.image_to_string(img, lang="vie", config=_TESS_CONFIG)
     except Exception:  # noqa: BLE001 — 1 trang lỗi không chặn cả file
         return i, ""
 
 
 def _ocr_pdf(pdf_bytes: bytes) -> str:
-    """OCR tiếng Việt SONG SONG: render trang → ảnh → tesseract (lang=vie).
+    """OCR tiếng Việt: render trang → ảnh → tesseract (lang=vie).
 
-    Dùng khi lớp text hỏng (scan/font lỗi). Lỗi/thiếu tesseract → trả ''.
+    Xử lý theo LÔ (mỗi lô = số luồng) để chặn RAM: chỉ giữ tối đa `_OCR_WORKERS`
+    ảnh trong bộ nhớ cùng lúc → tránh OOM trên máy chủ 512MB (Render free). OCR
+    song song trong lô (tesseract chạy tiến trình riêng). Thiếu lib/lỗi → trả ''.
     """
     try:
         import pypdfium2 as pdfium
@@ -71,17 +85,22 @@ def _ocr_pdf(pdf_bytes: bytes) -> str:
     from concurrent.futures import ThreadPoolExecutor
 
     n = min(len(pdf), _OCR_MAX_PAGES)
-    # Render tuần tự (pdfium không thread-safe), OCR song song (tesseract subprocess)
-    imgs = []
-    for i in range(n):
-        try:
-            imgs.append((i, pdf[i].render(scale=_OCR_SCALE).to_pil()))
-        except Exception:  # noqa: BLE001
-            continue
     results: dict[int, str] = {}
     with ThreadPoolExecutor(max_workers=_OCR_WORKERS) as ex:
-        for i, txt in ex.map(_ocr_one_page, imgs):
-            results[i] = txt
+        for start in range(0, n, _OCR_WORKERS):
+            # Render 1 lô (pdfium render không thread-safe → render tuần tự)
+            batch = []
+            for i in range(start, min(start + _OCR_WORKERS, n)):
+                try:
+                    # render ảnh XÁM (grayscale): render nhanh hơn, ảnh nhẹ RAM hơn,
+                    # tesseract OCR nhanh hơn mà không giảm độ chính xác chữ.
+                    img = pdf[i].render(scale=_OCR_SCALE, grayscale=True).to_pil()
+                    batch.append((i, img))
+                except Exception:  # noqa: BLE001
+                    continue
+            # OCR cả lô song song, rồi giải phóng ảnh (batch ra khỏi scope)
+            for i, txt in ex.map(_ocr_one_page, batch):
+                results[i] = txt
     return "\n".join(results[i] for i in sorted(results))
 
 

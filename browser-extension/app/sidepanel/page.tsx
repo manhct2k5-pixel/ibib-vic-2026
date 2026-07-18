@@ -10,7 +10,7 @@ type PageContext = { title: string; url: string; favIconUrl?: string }
 type PageExtract = { ok: boolean; title?: string; url?: string; text?: string; hash?: string; warnings?: string[]; truncated?: boolean; stats?: { characters: number; blocks: number; readableFrames: number }; scope?: { scoped: boolean; keywords: string[]; matchedBlocks: number }; error?: string }
 type CachedPageData = { url: string; title?: string; text: string; hash: string; extractedAt: number; warnings?: string[]; truncated?: boolean; stats?: PageExtract['stats'] }
 
-const DEFAULTS: Settings = { apiUrl: 'http://localhost:8000', audience: 'employee' }
+const DEFAULTS: Settings = { apiUrl: 'https://ibib-vic-2026.onrender.com', audience: 'employee' }
 const HOME_URL = 'http://localhost:5173/chatbot'
 const LOGIN_URL = 'http://localhost:5173/login'
 const storageGet = <T,>(keys: string[]) => new Promise<T>((resolve) => chrome.storage.local.get(keys, (value) => resolve(value as T)))

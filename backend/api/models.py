@@ -48,8 +48,8 @@ class ClauseEmbedding(SQLModel, table=True):
     __table_args__ = {"schema": "dwh"}  # Resides in dwh schema alongside clauses!
     
     clause_id: str = Field(primary_key=True, foreign_key="dwh.dieu_khoan.clause_id")
-    # Store 768-dimension vector embeddings
-    embedding: List[float] = Field(sa_column=Column(Vector(768)))
+    # Vector embedding ngữ nghĩa (multilingual-e5-large = 1024 chiều)
+    embedding: List[float] = Field(sa_column=Column(Vector(1024)))
 
 class Edge(SQLModel, table=True):
     __tablename__ = "qh_dkhoan"
