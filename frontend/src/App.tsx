@@ -1,15 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import type { FormEvent, KeyboardEvent } from 'react'
-import { checkBackendHealth, sendChatRequest, type SourceItem } from './services/chatApi'
+import { sendChatRequest, type SourceItem } from './services/chatApi'
 import SourceCard from './components/SourceCard'
 import './App.css'
 
-const Icon = ({ name }: { name: 'bell' | 'history' | 'paperclip' | 'pin' | 'arrow' | 'calendar' }) => {
+const Icon = ({ name }: { name: 'bell' | 'history' | 'paperclip' | 'arrow' | 'calendar' }) => {
   const paths = {
     bell: <><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></>,
     history: <><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/></>,
     paperclip: <path d="m21.4 11.6-8.9 8.9a6 6 0 0 1-8.5-8.5l9.6-9.6a4 4 0 0 1 5.7 5.7l-9.6 9.6a2 2 0 0 1-2.8-2.8l8.9-8.9"/>,
-    pin: <><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></>,
     calendar: <><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4M16 3v4M4 9h16"/></>,
     arrow: <><path d="M12 19V5M6 11l6-6 6 6"/></>,
   }
@@ -20,6 +19,78 @@ const getLocalIsoDate = () => {
   const now = new Date()
   const pad = (value: number) => String(value).padStart(2, '0')
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
+}
+
+const SESSION_KEY = 'compliance-ai-session'
+const HISTORY_KEY = 'compliance-ai-history'
+const WORKSPACE_KEY = 'compliance-ai-workspace'
+const NOTIFICATIONS_KEY = 'compliance-ai-notifications'
+type AccountRole = 'manager' | 'employee'
+
+const readSessionRole = (): AccountRole | null => {
+  try {
+    const raw = window.localStorage.getItem(SESSION_KEY)
+    if (!raw) return null
+    const session = JSON.parse(raw) as { role?: unknown }
+    return session.role === 'manager' || session.role === 'employee' ? session.role : null
+  } catch {
+    return null
+  }
+}
+
+const formatDateTime = (date: Date) => {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const day = pad(date.getDate())
+  const month = pad(date.getMonth() + 1)
+  const year = date.getFullYear()
+  const hours = pad(date.getHours())
+  const minutes = pad(date.getMinutes())
+  return `${day}/${month}/${year} ${hours}:${minutes}`
+}
+
+const getRelativeTime = (date: Date) => {
+  const now = new Date()
+  const diff = now.getTime() - date.getTime()
+  const minutes = Math.floor(diff / 60000)
+  const hours = Math.floor(diff / 3600000)
+  const days = Math.floor(diff / 86400000)
+
+  if (minutes < 1) return 'Vừa xong'
+  if (minutes < 60) return `${minutes} phút trước`
+  if (hours < 24) return `${hours} giờ trước`
+  if (days === 1) return 'Hôm qua'
+  if (days < 7) return `${days} ngày trước`
+  return formatDateTime(date)
+}
+
+const loadHistory = (): ConversationEntry[] => {
+  try {
+    const raw = window.localStorage.getItem(HISTORY_KEY)
+    if (!raw) return []
+    const parsed: unknown = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter((entry): entry is ConversationEntry => {
+      if (!entry || typeof entry !== 'object') return false
+      const candidate = entry as Partial<ConversationEntry>
+      return typeof candidate.id === 'number'
+        && typeof candidate.question === 'string'
+        && typeof candidate.answer === 'string'
+        && typeof candidate.error === 'string'
+        && Array.isArray(candidate.sources)
+    })
+  } catch {
+    return []
+  }
+}
+
+const saveHistory = (history: ConversationEntry[]) => {
+  try {
+    // Keep only last 50 conversations
+    const trimmed = history.slice(-50)
+    window.localStorage.setItem(HISTORY_KEY, JSON.stringify(trimmed))
+  } catch {
+    // Ignore storage errors
+  }
 }
 
 const InlineText = ({ text }: { text: string }) => <>{text.split(/(\*\*.*?\*\*)/g).map((part, index) => part.startsWith('**') && part.endsWith('**') ? <strong key={index}>{part.slice(2, -2)}</strong> : part)}</>
@@ -37,20 +108,99 @@ const FormattedAnswer = ({ content }: { content: string }) => (
   </div>
 )
 
+type ConversationEntry = {
+  id: number
+  question: string
+  answer: string
+  error: string
+  sources: SourceItem[]
+  conflictWarning: string | null
+  requestId: string | null
+  latencyMs: number | null
+  createdAt?: string
+  asOf?: string
+  audience?: AccountRole
+}
+
+type SavedWorkspace = {
+  question: string
+  lastQuestion: string
+  conversation: ConversationEntry[]
+  answer: string
+  sources: SourceItem[]
+  conflictWarning: string | null
+  requestId: string | null
+  latencyMs: number | null
+  error: string
+  asOf: string
+  audience: AccountRole
+}
+
+type AppNotification = {
+  id: number
+  title: string
+  message: string
+  kind: 'success' | 'warning' | 'error'
+  createdAt: string
+  read: boolean
+}
+
+const loadNotifications = (): AppNotification[] => {
+  try {
+    const raw = window.localStorage.getItem(NOTIFICATIONS_KEY)
+    if (!raw) return []
+    const parsed: unknown = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter((item): item is AppNotification => {
+      if (!item || typeof item !== 'object') return false
+      const value = item as Partial<AppNotification>
+      return typeof value.id === 'number' && typeof value.title === 'string'
+        && typeof value.message === 'string' && typeof value.createdAt === 'string'
+        && typeof value.read === 'boolean'
+        && (value.kind === 'success' || value.kind === 'warning' || value.kind === 'error')
+    })
+  } catch {
+    return []
+  }
+}
+
+const saveNotifications = (notifications: AppNotification[]) => {
+  try {
+    window.localStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify(notifications.slice(-50)))
+  } catch {
+    // Trình duyệt có thể chặn storage.
+  }
+}
+
+const loadWorkspace = (): Partial<SavedWorkspace> => {
+  try {
+    const raw = window.localStorage.getItem(WORKSPACE_KEY)
+    if (!raw) return {}
+    const parsed: unknown = JSON.parse(raw)
+    return parsed && typeof parsed === 'object' ? parsed as Partial<SavedWorkspace> : {}
+  } catch {
+    return {}
+  }
+}
+
+const initialWorkspace = loadWorkspace()
+
 function App() {
+  const initialRole = readSessionRole()
   const [isAuthenticated, setIsAuthenticated] = useState(() => window.location.pathname === '/chatbot')
   const [loginName, setLoginName] = useState('')
   const [loginPassword, setLoginPassword] = useState('')
-  const [question, setQuestion] = useState('')
-  const [answer, setAnswer] = useState('')
-  const [sources, setSources] = useState<SourceItem[]>([])
-  const [conflictWarning, setConflictWarning] = useState<string | null>(null)
-  const [requestId, setRequestId] = useState<string | null>(null)
-  const [latencyMs, setLatencyMs] = useState<number | null>(null)
-  const [isBackendOnline, setIsBackendOnline] = useState<boolean | null>(null)
-  const [asOf, setAsOf] = useState(getLocalIsoDate)
-  const [audience, setAudience] = useState<'manager' | 'employee'>('employee')
-  const [error, setError] = useState('')
+  const [question, setQuestion] = useState(typeof initialWorkspace.question === 'string' ? initialWorkspace.question : '')
+  const [lastQuestion, setLastQuestion] = useState(typeof initialWorkspace.lastQuestion === 'string' ? initialWorkspace.lastQuestion : '')
+  const [conversation, setConversation] = useState<ConversationEntry[]>(Array.isArray(initialWorkspace.conversation) ? initialWorkspace.conversation : [])
+  const [answer, setAnswer] = useState(typeof initialWorkspace.answer === 'string' ? initialWorkspace.answer : '')
+  const [sources, setSources] = useState<SourceItem[]>(Array.isArray(initialWorkspace.sources) ? initialWorkspace.sources : [])
+  const [conflictWarning, setConflictWarning] = useState<string | null>(typeof initialWorkspace.conflictWarning === 'string' ? initialWorkspace.conflictWarning : null)
+  const [requestId, setRequestId] = useState<string | null>(typeof initialWorkspace.requestId === 'string' ? initialWorkspace.requestId : null)
+  const [latencyMs, setLatencyMs] = useState<number | null>(typeof initialWorkspace.latencyMs === 'number' ? initialWorkspace.latencyMs : null)
+  const [asOf, setAsOf] = useState(typeof initialWorkspace.asOf === 'string' ? initialWorkspace.asOf : getLocalIsoDate)
+  const [audience, setAudience] = useState<AccountRole>(initialWorkspace.audience === 'manager' || initialWorkspace.audience === 'employee' ? initialWorkspace.audience : initialRole ?? 'employee')
+  const [error, setError] = useState(typeof initialWorkspace.error === 'string' ? initialWorkspace.error : '')
   const [isLoading, setIsLoading] = useState(false)
   const [isProfileOpen, setIsProfileOpen] = useState(false)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
@@ -60,38 +210,127 @@ function App() {
   const [isPasswordFormOpen, setIsPasswordFormOpen] = useState(false)
   const [displayName, setDisplayName] = useState('FB: SnooAI')
   const [username, setUsername] = useState('eacuncsowe')
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false)
+  const [chatHistory, setChatHistory] = useState<ConversationEntry[]>([])
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false)
+  const [notifications, setNotifications] = useState<AppNotification[]>(loadNotifications)
   const fileInput = useRef<HTMLInputElement>(null)
 
   const navigate = (path: '/login' | '/chatbot') => {
     window.history.pushState({}, '', path)
-    setIsAuthenticated(path === '/chatbot')
+    setIsAuthenticated(path === '/chatbot' && readSessionRole() !== null)
   }
 
   const completeLogin = () => {
     const normalizedName = loginName.trim().toLocaleLowerCase('vi-VN')
     const isManager = ['manager', 'admin', 'quanly', 'quản lý'].includes(normalizedName)
-    setAudience(isManager ? 'manager' : 'employee')
+    const role: AccountRole = isManager ? 'manager' : 'employee'
+    window.localStorage.setItem(SESSION_KEY, JSON.stringify({ role, signedInAt: new Date().toISOString() }))
+    setAudience(role)
     navigate('/chatbot')
   }
 
-  useEffect(() => {
-    if (window.location.pathname !== '/login' && window.location.pathname !== '/chatbot') {
-      window.history.replaceState({}, '', '/login')
-    }
-    const handlePopState = () => setIsAuthenticated(window.location.pathname === '/chatbot')
-    window.addEventListener('popstate', handlePopState)
-    return () => window.removeEventListener('popstate', handlePopState)
-  }, [])
+  const socialLogin = () => {
+    window.localStorage.setItem(SESSION_KEY, JSON.stringify({ role: 'employee', signedInAt: new Date().toISOString() }))
+    setAudience('employee')
+    navigate('/chatbot')
+  }
+
+  const logout = () => {
+    window.localStorage.removeItem(SESSION_KEY)
+    setIsSettingsOpen(false)
+    setIsAuthenticated(false)
+    window.history.pushState({}, '', '/login')
+  }
 
   useEffect(() => {
-    let active = true
-    const checkConnection = () => checkBackendHealth()
-      .then(() => { if (active) setIsBackendOnline(true) })
-      .catch(() => { if (active) setIsBackendOnline(false) })
-    void checkConnection()
-    const timer = window.setInterval(checkConnection, 30_000)
-    return () => { active = false; window.clearInterval(timer) }
+    const syncRouteWithSession = () => {
+      setIsAuthenticated(window.location.pathname === '/chatbot')
+    }
+    if (window.location.pathname !== '/login' && window.location.pathname !== '/chatbot') {
+      window.history.replaceState({}, '', '/chatbot')
+    }
+    syncRouteWithSession()
+    window.addEventListener('popstate', syncRouteWithSession)
+    return () => window.removeEventListener('popstate', syncRouteWithSession)
   }, [])
+
+  const addToHistory = (entry: ConversationEntry) => {
+    setChatHistory((current) => {
+      const next = [...current, entry].slice(-50)
+      saveHistory(next)
+      return next
+    })
+  }
+
+  const openHistoryEntry = (entry: ConversationEntry) => {
+    setConversation([])
+    setLastQuestion(entry.question)
+    setAnswer(entry.answer)
+    setError(entry.error)
+    setSources(entry.sources)
+    setConflictWarning(entry.conflictWarning ?? null)
+    setRequestId(entry.requestId ?? null)
+    setLatencyMs(entry.latencyMs ?? null)
+    if (entry.asOf) setAsOf(entry.asOf)
+    if (entry.audience) setAudience(entry.audience)
+    setIsHistoryOpen(false)
+  }
+
+  const deleteHistoryEntry = (id: number) => {
+    setChatHistory((current) => {
+      const next = current.filter((entry) => entry.id !== id)
+      saveHistory(next)
+      return next
+    })
+  }
+
+  const clearHistory = () => {
+    setChatHistory([])
+    saveHistory([])
+  }
+
+  const addNotification = (notification: Omit<AppNotification, 'id' | 'createdAt' | 'read'>) => {
+    setNotifications((current) => {
+      const next = [...current, { ...notification, id: Date.now(), createdAt: new Date().toISOString(), read: false }].slice(-50)
+      saveNotifications(next)
+      return next
+    })
+  }
+
+  const markAllNotificationsRead = () => {
+    setNotifications((current) => {
+      const next = current.map((item) => ({ ...item, read: true }))
+      saveNotifications(next)
+      return next
+    })
+  }
+
+  const deleteNotification = (id: number) => {
+    setNotifications((current) => {
+      const next = current.filter((item) => item.id !== id)
+      saveNotifications(next)
+      return next
+    })
+  }
+
+  const clearNotifications = () => {
+    setNotifications([])
+    saveNotifications([])
+  }
+
+  const startNewChat = () => {
+    setQuestion('')
+    setLastQuestion('')
+    setConversation([])
+    setAnswer('')
+    setSources([])
+    setConflictWarning(null)
+    setRequestId(null)
+    setLatencyMs(null)
+    setError('')
+    setAsOf(getLocalIsoDate())
+  }
 
   useEffect(() => {
     const updateDate = () => setAsOf(getLocalIsoDate())
@@ -99,10 +338,35 @@ function App() {
     return () => window.clearInterval(timer)
   }, [])
 
+  // Load history on mount
+  useEffect(() => {
+    const history = loadHistory()
+    setChatHistory(history)
+  }, [])
+
+  useEffect(() => {
+    const workspace: SavedWorkspace = {
+      question, lastQuestion, conversation, answer, sources, conflictWarning,
+      requestId, latencyMs, error, asOf, audience,
+    }
+    try {
+      window.localStorage.setItem(WORKSPACE_KEY, JSON.stringify(workspace))
+    } catch {
+      // Trình duyệt có thể chặn storage; phiên hiện tại vẫn tiếp tục hoạt động.
+    }
+  }, [question, lastQuestion, conversation, answer, sources, conflictWarning, requestId, latencyMs, error, asOf, audience])
+
   const submit = async (event?: FormEvent) => {
     event?.preventDefault()
     const value = question.trim()
     if (!value || isLoading) return
+    if (answer || error) {
+      setConversation((current) => [...current, {
+        id: Date.now(), question: lastQuestion, answer, error, sources,
+        conflictWarning, requestId, latencyMs,
+      }])
+    }
+    setLastQuestion(value)
     setError(''); setAnswer(''); setSources([]); setConflictWarning(null); setRequestId(null); setLatencyMs(null); setIsLoading(true)
     try {
       const result = await sendChatRequest(value, { asOf, audience, mode: 'system' })
@@ -112,8 +376,25 @@ function App() {
       setConflictWarning(result.conflictWarning ?? null)
       setRequestId(result.requestId ?? null)
       setLatencyMs(result.latencyMs ?? null)
+      addToHistory({
+        id: Date.now(), question: value, answer: result.answer, error: '', sources: result.sources,
+        conflictWarning: result.conflictWarning ?? null, requestId: result.requestId ?? null,
+        latencyMs: result.latencyMs ?? null, createdAt: new Date().toISOString(), asOf, audience,
+      })
+      if (result.conflictWarning?.trim()) {
+        addNotification({ title: 'Phát hiện mâu thuẫn', message: `Câu hỏi “${value}” có quy định cần chú ý.`, kind: 'warning' })
+      } else {
+        addNotification({ title: 'Tra cứu hoàn tất', message: `Đã xử lý câu hỏi “${value}”.`, kind: 'success' })
+      }
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Đã xảy ra lỗi.')
+      const message = e instanceof Error ? e.message : 'Đã xảy ra lỗi.'
+      setError(message)
+      addToHistory({
+        id: Date.now(), question: value, answer: '', error: message, sources: [],
+        conflictWarning: null, requestId: null, latencyMs: null,
+        createdAt: new Date().toISOString(), asOf, audience,
+      })
+      addNotification({ title: 'Tra cứu thất bại', message, kind: 'error' })
     } finally { setIsLoading(false) }
   }
 
@@ -154,14 +435,28 @@ function App() {
 
             <div className="login-divider"><span>hoặc đăng nhập bằng</span></div>
             <div className="social-login">
-              <button type="button" onClick={() => { setAudience('employee'); navigate('/chatbot') }} aria-label="Đăng nhập bằng Google">
+              <button type="button" onClick={socialLogin} aria-label="Đăng nhập bằng Google">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12.2c0-.7-.1-1.3-.2-1.9H12v3.6h4.5a3.9 3.9 0 0 1-1.7 2.5v2.3h2.9c1.7-1.6 2.3-3.8 2.3-6.5Z"/><path d="M12 20c2.2 0 4.1-.7 5.5-2l-2.9-2.3c-.8.5-1.8.9-2.9.9-2.1 0-3.9-1.4-4.6-3.4h-3v2.4A8.3 8.3 0 0 0 12 20Z"/><path d="M7.1 13.2a5 5 0 0 1 0-3.1V7.7h-3a8.3 8.3 0 0 0 0 7.9l3-2.4Z"/><path d="M12 6.7c1.2 0 2.3.4 3.2 1.3l2.4-2.4A8 8 0 0 0 4.1 7.7l3 2.4A5 5 0 0 1 12 6.7Z"/></svg>
                 Google
               </button>
-              <button type="button" onClick={() => { setAudience('employee'); navigate('/chatbot') }} aria-label="Đăng nhập bằng Microsoft">
+              <button type="button" onClick={socialLogin} aria-label="Đăng nhập bằng Microsoft">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="8" height="8"/><rect x="13" y="3" width="8" height="8"/><rect x="3" y="13" width="8" height="8"/><rect x="13" y="13" width="8" height="8"/></svg>
                 Microsoft
               </button>
+            </div>
+
+            <div className="demo-accounts">
+              <div className="demo-divider"><span>Tài khoản Demo</span></div>
+              <div className="demo-buttons">
+                <button type="button" className="demo-btn employee" onClick={() => { setLoginName('nhanvien'); setLoginPassword('demo'); window.localStorage.setItem(SESSION_KEY, JSON.stringify({ role: 'employee', signedInAt: new Date().toISOString() })); navigate('/chatbot'); }}>
+                  <span className="demo-role">Nhân viên</span>
+                  <span className="demo-desc">Xem quy định cơ bản</span>
+                </button>
+                <button type="button" className="demo-btn manager" onClick={() => { setLoginName('quanly'); setLoginPassword('demo'); window.localStorage.setItem(SESSION_KEY, JSON.stringify({ role: 'manager', signedInAt: new Date().toISOString() })); navigate('/chatbot'); }}>
+                  <span className="demo-role">Quản lý</span>
+                  <span className="demo-desc">Xem đầy đủ quyền hạn</span>
+                </button>
+              </div>
             </div>
           </section>
         </main>
@@ -179,8 +474,24 @@ function App() {
       <header className="topbar">
         <a className="brand" href="#">Sovereign Compliance AI</a>
         <div className="header-actions">
-          <span className={`connection-status ${isBackendOnline === false ? 'offline' : ''}`} title={isBackendOnline === null ? 'Đang kiểm tra kết nối' : isBackendOnline ? 'Backend đang hoạt động' : 'Không kết nối được backend'}><i />{isBackendOnline === false ? 'Offline' : isBackendOnline === null ? 'Đang nối' : 'Online'}</span>
-          <button className="icon-button" aria-label="Thông báo"><Icon name="bell" /></button>
+          <span className={`connection-status account-role-status ${audience}`} title={`Loại tài khoản: ${audience === 'manager' ? 'Quản lý' : 'Nhân viên'}`}><i />{audience === 'manager' ? 'Quản lý' : 'Nhân viên'}</span>
+          <div className="notification-menu">
+            <button className="icon-button notification-button" type="button" aria-label={`Thông báo, ${notifications.filter((item) => !item.read).length} chưa đọc`} aria-expanded={isNotificationsOpen} onClick={() => setIsNotificationsOpen((open) => !open)}>
+              <Icon name="bell" />
+              {notifications.some((item) => !item.read) && <span className="notification-count">{Math.min(notifications.filter((item) => !item.read).length, 99)}</span>}
+            </button>
+            {isNotificationsOpen && <section className="notification-panel" aria-label="Danh sách thông báo">
+              <header><div><h2>Thông báo</h2><p>{notifications.filter((item) => !item.read).length} chưa đọc</p></div><button type="button" onClick={markAllNotificationsRead} disabled={!notifications.some((item) => !item.read)}>Đánh dấu đã đọc</button></header>
+              {notifications.length === 0 ? <div className="notification-empty"><Icon name="bell" /><strong>Chưa có thông báo</strong><p>Các cập nhật về lượt tra cứu sẽ xuất hiện tại đây.</p></div> : <div className="notification-list">
+                {[...notifications].reverse().map((item) => <article className={`notification-item ${item.kind} ${item.read ? 'read' : 'unread'}`} key={item.id}>
+                  <i className="notification-dot" />
+                  <div><strong>{item.title}</strong><p>{item.message}</p><small>{getRelativeTime(new Date(item.createdAt))}</small></div>
+                  <button type="button" onClick={() => deleteNotification(item.id)} aria-label={`Xóa thông báo ${item.title}`}>×</button>
+                </article>)}
+              </div>}
+              {notifications.length > 0 && <footer><button type="button" onClick={clearNotifications}>Xóa tất cả</button></footer>}
+            </section>}
+          </div>
           <div className="account-menu">
             <span className="account-name">{displayName}</span>
             <button className="avatar" aria-label="Mở menu tài khoản" aria-haspopup="menu"><span>AI</span></button>
@@ -204,7 +515,20 @@ function App() {
           <div className="query-options">
             <div className="date-picker" aria-label={`Đang xem quy định tại ngày ${asOf}`}><Icon name="calendar" /><span>Đang xem quy định tại ngày</span><strong>{new Intl.DateTimeFormat('en-US').format(new Date(`${asOf}T00:00:00`))}</strong></div>
           </div>
-          {(isLoading || answer || error) && (
+          {conversation.length > 0 && <div className="conversation-history">{conversation.map((entry) => <article className="conversation-turn" key={entry.id}>
+            <div className="user-message">{entry.question}</div>
+            <div className="assistant-message">
+              {entry.error ? <p className="response-error">{entry.error}</p> : <>
+                {entry.conflictWarning?.trim() && <div className="conflict-warning"><strong>⚠ Cảnh báo mâu thuẫn</strong><p>{entry.conflictWarning}</p></div>}
+                <FormattedAnswer content={entry.answer} />
+                {entry.sources.length > 0 && <details className="source-list"><summary>Nguồn tham khảo <span>{entry.sources.length}</span></summary>{entry.sources.map((source, index) => <SourceCard source={source} key={`${source.clauseId}-${index}`} />)}</details>}
+                {(entry.requestId || entry.latencyMs !== null) && <div className="response-footer">{entry.requestId && <span>Request ID: {entry.requestId}</span>}{entry.requestId && entry.latencyMs !== null && <i />}{entry.latencyMs !== null && <span>{entry.latencyMs.toLocaleString('vi-VN')} ms</span>}</div>}
+              </>}
+            </div>
+          </article>)}</div>}
+          {(isLoading || answer || error) && <div className="current-turn">
+          {lastQuestion && <div className="current-question user-message">{lastQuestion}</div>}
+          <>
             <section className={`response result-response ${error ? 'response-error' : ''}`} aria-live="polite">
               {isLoading ? <div className="result-loading"><span className="result-spinner" />Đang xử lý yêu cầu...</div> : error ? error : (
                 <>
@@ -215,16 +539,19 @@ function App() {
                 </>
               )}
             </section>
-          )}
+          </>
+          </div>}
           <form className="prompt-box" onSubmit={submit}>
             <textarea aria-label="Câu hỏi nghiệp vụ" value={question} onChange={(e) => setQuestion(e.target.value)} onKeyDown={onKeyDown} placeholder="Nhập câu hỏi hoặc mô tả tình huống nghiệp vụ..." />
             <div className="prompt-tools">
               <div className="left-tools">
-                <button type="button" aria-label="Lịch sử"><Icon name="history" /></button>
+                <button type="button" aria-label="Lịch sử giao dịch" title="Lịch sử giao dịch" onClick={() => setIsHistoryOpen(true)}><Icon name="history" /></button>
                 <button type="button" aria-label="Đính kèm tệp" onClick={() => fileInput.current?.click()}><Icon name="paperclip" /></button>
-                <button type="button" aria-label="Gợi ý"><Icon name="pin" /></button>
               </div>
-              <button className="send-button" type="submit" disabled={!question.trim() || isLoading} aria-label="Gửi câu hỏi"><Icon name="arrow" /></button>
+              <div className="prompt-actions">
+                <button className="new-chat-button" type="button" onClick={startNewChat} disabled={isLoading || (!lastQuestion && conversation.length === 0)} aria-label="Tạo cuộc trò chuyện mới"><span>＋</span> New chat</button>
+                <button className="send-button" type="submit" disabled={!question.trim() || isLoading} aria-label="Gửi câu hỏi"><Icon name="arrow" /></button>
+              </div>
             </div>
           </form>
           <input ref={fileInput} type="file" hidden />
@@ -234,6 +561,38 @@ function App() {
       <footer>
         <nav><a href="#privacy">Chính sách bảo mật</a><a href="#terms">Điều khoản dịch vụ</a></nav>
       </footer>
+
+      {isHistoryOpen && (
+        <div className="modal-backdrop history-backdrop" role="presentation" onMouseDown={(event) => {
+          if (event.target === event.currentTarget) setIsHistoryOpen(false)
+        }}>
+          <section className="history-modal" role="dialog" aria-modal="true" aria-labelledby="history-title">
+            <header className="history-header">
+              <div><h2 id="history-title">Lịch sử giao dịch</h2><p>{chatHistory.length} lượt tra cứu gần nhất</p></div>
+              <button type="button" onClick={() => setIsHistoryOpen(false)} aria-label="Đóng lịch sử">×</button>
+            </header>
+            {chatHistory.length === 0 ? (
+              <div className="history-empty"><Icon name="history" /><strong>Chưa có giao dịch nào</strong><p>Các lượt tra cứu sẽ xuất hiện tại đây sau khi bạn gửi câu hỏi.</p></div>
+            ) : (
+              <div className="history-list">
+                {[...chatHistory].reverse().map((entry) => {
+                  const createdAt = entry.createdAt ? new Date(entry.createdAt) : new Date(entry.id)
+                  const validDate = !Number.isNaN(createdAt.getTime())
+                  return <article className="history-item" key={entry.id}>
+                    <button className="history-entry" type="button" onClick={() => openHistoryEntry(entry)}>
+                      <span className={`history-status ${entry.error ? 'failed' : 'success'}`}>{entry.error ? 'Thất bại' : 'Hoàn tất'}</span>
+                      <strong>{entry.question}</strong>
+                      <small>{validDate ? getRelativeTime(createdAt) : 'Không rõ thời gian'}{entry.asOf ? ` · Hiệu lực ${new Intl.DateTimeFormat('vi-VN').format(new Date(`${entry.asOf}T00:00:00`))}` : ''}</small>
+                    </button>
+                    <button className="history-delete" type="button" onClick={() => deleteHistoryEntry(entry.id)} aria-label={`Xóa giao dịch ${entry.question}`}>×</button>
+                  </article>
+                })}
+              </div>
+            )}
+            {chatHistory.length > 0 && <footer className="history-footer"><button type="button" onClick={clearHistory}>Xóa toàn bộ lịch sử</button></footer>}
+          </section>
+        </div>
+      )}
 
       {isProfileOpen && (
         <div className="modal-backdrop" role="presentation" onMouseDown={(event) => {
@@ -276,7 +635,7 @@ function App() {
               <h2 id="settings-title">Cài đặt</h2>
               <button className={settingsSection === 'appearance' ? 'active' : ''} type="button" onClick={() => setSettingsSection('appearance')}><span>◐</span> Giao diện</button>
               <button className={settingsSection === 'security' ? 'active' : ''} type="button" onClick={() => setSettingsSection('security')}><span>◇</span> Bảo mật</button>
-              <button className="logout-nav" type="button" onClick={() => { setIsSettingsOpen(false); navigate('/login') }}><span>↪</span> Đăng xuất</button>
+              <button className="logout-nav" type="button" onClick={logout}><span>↪</span> Đăng xuất</button>
             </aside>
 
             <div className="settings-content">
