@@ -19,11 +19,11 @@ const storageSet = (value: Record<string, unknown>) => new Promise<void>((resolv
 type FrameExtract = { ok: boolean; title?: string; url?: string; text?: string; fullLength?: number; keywords?: string[]; matchedBlocks?: number; scoped?: boolean; error?: string }
 const scopeFetchedText = (rawText: string, query: string): FrameExtract => {
   const text = rawText.replace(/\u00a0/g, ' ').replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim().slice(0, 300_000)
-  const stopWords = new Set(['của', 'cho', 'với', 'trong', 'được', 'những', 'các', 'này', 'đó', 'là', 'và', 'hoặc', 'thì', 'về', 'theo', 'tôi', 'bạn', 'hãy', 'gì', 'như', 'nào', 'tìm', 'thông', 'tin', 'trang', 'liên', 'quan', 'đến', 'đang', 'xem'])
-  const keywords = [...new Set((query || '').toLocaleLowerCase('vi-VN').match(/[\p{L}\p{N}_-]{2,}/gu) || [])].filter((word) => word.length >= 3 && !stopWords.has(word)).slice(0, 12)
+  const stopWords = new Set(['của', 'cho', 'với', 'trong', 'được', 'những', 'các', 'này', 'đó', 'là', 'và', 'hoặc', 'thì', 'về', 'theo', 'tôi', 'bạn', 'hãy', 'gì', 'như', 'nào', 'nói', 'tìm', 'thông', 'tin', 'trang', 'liên', 'quan', 'đến', 'đang', 'xem'])
+  const keywords = [...new Set((query || '').toLocaleLowerCase('vi-VN').match(/[\p{L}\p{N}_-]{1,}/gu) || [])].filter((word) => (word.length >= 3 || /^\d+$/.test(word)) && !stopWords.has(word)).slice(0, 12)
   if (!keywords.length) return { ok: Boolean(text), text: text.slice(0, 80_000), fullLength: text.length, keywords, matchedBlocks: 0, scoped: false }
   const blocks = text.split(/\n+/).map((item) => item.trim()).filter((item) => item.length > 1)
-  const ranked = blocks.map((block, index) => ({ index, score: keywords.filter((word) => block.toLocaleLowerCase('vi-VN').includes(word)).length })).filter((item) => item.score > 0).sort((a, b) => b.score - a.score)
+  const ranked = blocks.map((block, index) => { const normalized = block.toLocaleLowerCase('vi-VN'); return { index, score: keywords.filter((word) => /^\d+$/.test(word) ? new RegExp(`(^|\\D)${word}(\\D|$)`).test(normalized) : normalized.includes(word)).length } }).filter((item) => item.score > 0).sort((a, b) => b.score - a.score)
   const selected = new Set<number>()
   ranked.slice(0, 30).forEach(({ index }) => { selected.add(index); if (index > 0) selected.add(index - 1); if (index < blocks.length - 1) selected.add(index + 1) })
   const scopedText = selected.size ? [...selected].sort((a, b) => a - b).map((index) => blocks[index]).join('\n\n') : ''
@@ -81,13 +81,13 @@ const injectFrameReader = async (tabId: number, frameId: number, query: string):
         .replace(/\n{3,}/g, '\n\n')
         .trim()
         .slice(0, 160_000)
-      const stopWords = new Set(['của', 'cho', 'với', 'trong', 'được', 'những', 'các', 'này', 'đó', 'là', 'và', 'hoặc', 'thì', 'về', 'theo', 'tôi', 'bạn', 'hãy', 'gì', 'như', 'nào', 'tìm', 'thông', 'tin', 'trang', 'liên', 'quan', 'đến', 'đang', 'xem'])
-      const keywords = [...new Set((frameQuery || '').toLocaleLowerCase('vi-VN').match(/[\p{L}\p{N}_-]{2,}/gu) || [])].filter((word) => word.length >= 3 && !stopWords.has(word)).slice(0, 12)
+      const stopWords = new Set(['của', 'cho', 'với', 'trong', 'được', 'những', 'các', 'này', 'đó', 'là', 'và', 'hoặc', 'thì', 'về', 'theo', 'tôi', 'bạn', 'hãy', 'gì', 'như', 'nào', 'nói', 'tìm', 'thông', 'tin', 'trang', 'liên', 'quan', 'đến', 'đang', 'xem'])
+      const keywords = [...new Set((frameQuery || '').toLocaleLowerCase('vi-VN').match(/[\p{L}\p{N}_-]{1,}/gu) || [])].filter((word) => (word.length >= 3 || /^\d+$/.test(word)) && !stopWords.has(word)).slice(0, 12)
       if (!keywords.length) return { ok: Boolean(text), title: document.title, url: location.href, text: text.slice(0, 80_000), fullLength: text.length, keywords, matchedBlocks: 0, scoped: false }
       const blocks = text.split(/\n+/).map((item) => item.trim()).filter((item) => item.length > 1)
       const ranked = blocks.map((block, index) => {
         const normalized = block.toLocaleLowerCase('vi-VN')
-        return { index, score: keywords.filter((word) => normalized.includes(word)).length }
+        return { index, score: keywords.filter((word) => /^\d+$/.test(word) ? new RegExp(`(^|\\D)${word}(\\D|$)`).test(normalized) : normalized.includes(word)).length }
       }).filter((item) => item.score > 0).sort((a, b) => b.score - a.score)
       const selected = new Set<number>()
       ranked.slice(0, 28).forEach(({ index }) => {
@@ -382,7 +382,7 @@ export default function SidePanelPage() {
       const response = await fetch(`${settings.apiUrl.replace(/\/$/, '')}/api/summarize-page`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: page.title || pageContext.title, url: page.url || pageContext.url, text: page.text, question: cleanQuestion || null, keywords: page.scope?.keywords || [], warnings: page.warnings || [], truncated: page.truncated === true }),
+        body: JSON.stringify({ title: page.title || pageContext.title, url: page.url || pageContext.url, text: page.text, question: cleanQuestion || null, keywords: page.scope?.keywords || [], warnings: page.warnings || [], truncated: !cleanQuestion && page.truncated === true }),
       })
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(payload.detail || `API trả lỗi ${response.status}`)

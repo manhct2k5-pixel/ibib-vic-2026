@@ -1,8 +1,8 @@
 (() => {
   const normalize = (value) => (value || '').replace(/\u00a0/g, ' ').replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim()
   const keywordsOf = (query) => {
-    const stopWords = new Set(['của', 'cho', 'với', 'trong', 'được', 'những', 'các', 'này', 'đó', 'là', 'và', 'hoặc', 'thì', 'về', 'theo', 'tôi', 'bạn', 'hãy', 'gì', 'như', 'nào', 'tìm', 'thông', 'tin', 'trang', 'liên', 'quan', 'đến', 'đang', 'xem'])
-    return [...new Set((query || '').toLocaleLowerCase('vi-VN').match(/[\p{L}\p{N}_-]{2,}/gu) || [])].filter((word) => word.length >= 3 && !stopWords.has(word)).slice(0, 12)
+    const stopWords = new Set(['của', 'cho', 'với', 'trong', 'được', 'những', 'các', 'này', 'đó', 'là', 'và', 'hoặc', 'thì', 'về', 'theo', 'tôi', 'bạn', 'hãy', 'gì', 'như', 'nào', 'nói', 'tìm', 'thông', 'tin', 'trang', 'liên', 'quan', 'đến', 'đang', 'xem'])
+    return [...new Set((query || '').toLocaleLowerCase('vi-VN').match(/[\p{L}\p{N}_-]{1,}/gu) || [])].filter((word) => (word.length >= 3 || /^\d+$/.test(word)) && !stopWords.has(word)).slice(0, 12)
   }
   const scope = (text, query) => {
     const keywords = keywordsOf(query)
@@ -10,7 +10,7 @@
     const blocks = text.split(/\n+/).map((item) => item.trim()).filter((item) => item.length > 1)
     const ranked = blocks.map((block, index) => {
       const normalized = block.toLocaleLowerCase('vi-VN')
-      const matches = keywords.filter((word) => normalized.includes(word))
+      const matches = keywords.filter((word) => /^\d+$/.test(word) ? new RegExp(`(^|\\D)${word}(\\D|$)`).test(normalized) : normalized.includes(word))
       return { index, score: matches.length }
     }).filter((item) => item.score > 0).sort((a, b) => b.score - a.score)
     const selected = new Set()

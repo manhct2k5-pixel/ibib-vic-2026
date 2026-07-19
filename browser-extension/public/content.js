@@ -304,15 +304,15 @@
   const scopePageText = (text, query) => {
     const cleanQuery = normalizePageText(query || '').toLocaleLowerCase('vi-VN')
     if (!cleanQuery) return { text: text.slice(0, CONFIG.MAX_TEXT_LENGTH), scoped: false, keywords: [], matchedBlocks: 0 }
-    const stopWords = new Set(['của', 'cho', 'với', 'trong', 'được', 'những', 'các', 'này', 'đó', 'là', 'và', 'hoặc', 'thì', 'về', 'theo', 'tôi', 'bạn', 'hãy', 'gì', 'như', 'nào', 'tìm', 'thông', 'tin', 'trang', 'liên', 'quan', 'đến', 'đang', 'xem'])
-    const keywords = [...new Set(cleanQuery.match(/[\p{L}\p{N}_-]{2,}/gu) || [])]
-      .filter((word) => word.length >= 3 && !stopWords.has(word))
+    const stopWords = new Set(['của', 'cho', 'với', 'trong', 'được', 'những', 'các', 'này', 'đó', 'là', 'và', 'hoặc', 'thì', 'về', 'theo', 'tôi', 'bạn', 'hãy', 'gì', 'như', 'nào', 'nói', 'tìm', 'thông', 'tin', 'trang', 'liên', 'quan', 'đến', 'đang', 'xem'])
+    const keywords = [...new Set(cleanQuery.match(/[\p{L}\p{N}_-]{1,}/gu) || [])]
+      .filter((word) => (word.length >= 3 || /^\d+$/.test(word)) && !stopWords.has(word))
       .slice(0, 12)
     if (!keywords.length) return { text, scoped: false, keywords: [], matchedBlocks: 0 }
     const blocks = text.split(/\n{2,}/).map((block) => block.trim()).filter(Boolean)
     const ranked = blocks.map((block, index) => {
       const normalized = block.toLocaleLowerCase('vi-VN')
-      const matches = keywords.filter((word) => normalized.includes(word))
+      const matches = keywords.filter((word) => /^\d+$/.test(word) ? new RegExp(`(^|\\D)${word}(\\D|$)`).test(normalized) : normalized.includes(word))
       const headingBoost = block.startsWith('#') ? 2 : 0
       return { index, score: matches.length * 4 + headingBoost, matches }
     }).filter((item) => item.matches.length > 0).sort((a, b) => b.score - a.score)

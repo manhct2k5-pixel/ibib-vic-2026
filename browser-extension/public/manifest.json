@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "SovAI",
-  "version": "1.0.39",
+  "version": "1.0.40",
   "description": "Trợ lý tra cứu tuân thủ ngay trên Chrome và Microsoft Edge.",
   "permissions": ["activeTab", "clipboardWrite", "contextMenus", "sidePanel", "scripting", "storage", "webNavigation", "debugger"],
   "host_permissions": ["<all_urls>"],

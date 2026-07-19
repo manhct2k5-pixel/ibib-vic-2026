@@ -623,7 +623,7 @@ function App() {
   return (
     <div className={`app-shell theme-${theme} font-${fontSize} ${audience === 'manager' && isManagerArea ? 'manager-active' : ''}`}>
       <header className="topbar">
-        <a className="brand" href="#">IBIB</a>
+        <a className="brand" href="#">SovAI</a>
         <div className="header-actions">
           {audience === 'manager' && <div className="area-switch" role="group" aria-label="Chuyển khu vực"><button className={!isManagerArea ? 'active' : ''} type="button" onClick={() => setIsManagerArea(false)}>Chatbot</button><button className={isManagerArea ? 'active' : ''} type="button" onClick={() => setIsManagerArea(true)}>Quản trị</button></div>}
           <span className={`connection-status account-role-status ${audience}`} title={`Loại tài khoản: ${audience === 'manager' ? 'Quản lý' : 'Nhân viên'}`}><i />{audience === 'manager' ? 'Quản lý' : 'Nhân viên'}</span>
