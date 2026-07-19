@@ -196,14 +196,16 @@ def vector_retrieve_stage(
 def _hybrid_merge(
     bm25: List[Candidate], vector: List[Candidate], k: int = 8
 ) -> List[Candidate]:
-    """Trộn 2 bảng xếp hạng bằng Reciprocal Rank Fusion (RRF) — không phụ thuộc
-    thang điểm khác nhau của BM25 và cosine."""
-    C = 60
+    """Trộn 2 bảng xếp hạng bằng Reciprocal Rank Fusion CÓ TRỌNG SỐ. Ưu tiên VECTOR
+    (ngữ nghĩa) mạnh hơn BM25 để tránh điều lạc đề khớp từ khóa ('vốn'/'rủi ro'
+    trong quy trình nội bộ) chiếm top thay vì điều đúng chủ đề. C nhỏ → hạng đầu
+    có trọng số cao hơn hẳn."""
+    C = 20
     scores: Dict[str, float] = {}
     cand_by_id: Dict[str, Candidate] = {}
-    for ranking in (bm25, vector):
+    for ranking, weight in ((bm25, 1.0), (vector, 2.0)):
         for rank, c in enumerate(ranking):
-            scores[c.clause_id] = scores.get(c.clause_id, 0.0) + 1.0 / (C + rank)
+            scores[c.clause_id] = scores.get(c.clause_id, 0.0) + weight / (C + rank)
             cand_by_id.setdefault(c.clause_id, c)
     ordered = sorted(scores, key=lambda cid: scores[cid], reverse=True)
     return [cand_by_id[cid] for cid in ordered[:k]]
@@ -504,28 +506,62 @@ def session_retrieve_stage(
         )
     return out
 
+_VIS_LABEL = {"public": "Công khai", "internal": "Nội bộ"}
+_DEPT_LABEL = {
+    "tin_dung": "Tín dụng", "quan_ly_rui_ro": "Quản lý rủi ro", "phap_ly": "Pháp lý",
+}
+_TOPIC_LABEL = {
+    "ty_le_an_toan_von": "Tỷ lệ an toàn vốn", "gioi_han_tin_dung": "Giới hạn tín dụng",
+    "gioi_han_nganh": "Giới hạn theo ngành", "dieu_kien_vay_von": "Điều kiện vay vốn",
+    "tai_san_bao_dam": "Tài sản bảo đảm", "han_muc_tin_dung": "Hạn mức tín dụng",
+    "bao_cao_dinh_ky": "Báo cáo định kỳ", "quan_ly_rui_ro": "Quản lý rủi ro",
+    "quy_trinh_phap_ly": "Quy trình pháp lý", "quy_dinh_chung": "Quy định chung",
+    "du_tru_bat_buoc": "Dự trữ bắt buộc",
+}
+
+
+def _vis_label(v: str) -> str:
+    return _VIS_LABEL.get((v or "").lower(), v or "")
+
+
+def _dept_label(d: str) -> str:
+    return _DEPT_LABEL.get((d or "").lower(), (d or "").replace("_", " ").title())
+
+
+def _topic_label(t: str) -> str:
+    return _TOPIC_LABEL.get((t or "").lower(), (t or "").replace("_", " "))
+
+
+# Lệch quá xa (max/min > ngưỡng) → nhiều khả năng là HAI CHỈ SỐ KHÁC nhau bị gán
+# chung 1 topic (vd giới hạn ngành 20% vs LDR 85%), KHÔNG phải mâu thuẫn thật.
+_CONFLICT_MAX_RATIO = 2.5
+
+
 def conflict_check_stage(active_candidates: List[Candidate]) -> Optional[str]:
-    # Group by topic (skip empty/default topics)
     by_topic: Dict[str, List[Candidate]] = {}
     for c in active_candidates:
         if c.topic and c.topic.strip():
             by_topic.setdefault(c.topic, []).append(c)
 
-    # Scan for conflicting metric values in the same topic
     for topic, clauses in by_topic.items():
-        if len(clauses) > 1:
-            with_metrics = [c for c in clauses if c.metric_value is not None]
-            if len(with_metrics) > 1:
-                first_metric = with_metrics[0].metric_value
-                for c in with_metrics[1:]:
-                    if c.metric_value != first_metric:
-                        c1 = with_metrics[0]
-                        c2 = c
-                        return (
-                            f"Phát hiện quy định xung đột về chủ đề '{topic}':\n"
-                            f"• {c1.clause_id} ({c1.visibility.upper()} - Phòng ban: {c1.department.upper()}) quy định: {c1.metric_value} {c1.metric_unit or ''}\n"
-                            f"• {c2.clause_id} ({c2.visibility.upper()} - Phòng ban: {c2.department.upper()}) quy định: {c2.metric_value} {c2.metric_unit or ''}."
-                        )
+        with_metrics = [c for c in clauses if c.metric_value is not None]
+        for i in range(len(with_metrics)):
+            for j in range(i + 1, len(with_metrics)):
+                c1, c2 = with_metrics[i], with_metrics[j]
+                if c1.metric_value == c2.metric_value:
+                    continue
+                # Chỉ coi là mâu thuẫn nếu CÙNG ĐƠN VỊ và giá trị đủ gần (cùng loại
+                # chỉ số) → lọc false positive do topic thô.
+                if (c1.metric_unit or "") != (c2.metric_unit or ""):
+                    continue
+                lo, hi = sorted((abs(c1.metric_value), abs(c2.metric_value)))
+                if lo == 0 or hi / lo > _CONFLICT_MAX_RATIO:
+                    continue
+                return (
+                    f"Phát hiện quy định có thể xung đột về '{_topic_label(topic)}':\n"
+                    f"• {c1.clause_id} ({_vis_label(c1.visibility)} - {_dept_label(c1.department)}): {c1.metric_value:g}{c1.metric_unit or ''}\n"
+                    f"• {c2.clause_id} ({_vis_label(c2.visibility)} - {_dept_label(c2.department)}): {c2.metric_value:g}{c2.metric_unit or ''}."
+                )
     return None
 
 def compile_sources(
@@ -548,7 +584,7 @@ def compile_sources(
             doc_title = get_doc_title(c.doc_code, f"Văn bản {c.doc_code}")
             sources.append({
                 "name": f"{c.clause_id} — {c.path}",
-                "description": f"{doc_title}. Tầm ảnh hưởng: {c.visibility.upper()} | Ban: {c.department.upper()}. Trạng thái: Đang hiệu lực (Mốc: {c.effective_date})",
+                "description": f"{doc_title}. Phạm vi: {_vis_label(c.visibility)} | Ban: {_dept_label(c.department)}. Trạng thái: Đang hiệu lực (từ {c.effective_date})",
                 "body": c.text,
                 "clause_id": c.clause_id,
                 "doc_code": c.doc_code,
@@ -564,7 +600,7 @@ def compile_sources(
                 doc_title = get_doc_title(c.doc_code, f"Văn bản {c.doc_code}")
                 sources.append({
                     "name": f"{c.clause_id} — {c.path}",
-                    "description": f"{doc_title}. Tầm ảnh hưởng: {c.visibility.upper()} | Ban: {c.department.upper()}. Trạng thái: Đã hết hiệu lực / Bị thay thế",
+                    "description": f"{doc_title}. Phạm vi: {_vis_label(c.visibility)} | Ban: {_dept_label(c.department)}. Trạng thái: Đã hết hiệu lực / Bị thay thế",
                     "body": c.text,
                     "clause_id": c.clause_id,
                     "doc_code": c.doc_code,
@@ -585,7 +621,7 @@ def compile_sources(
                                 doc_title = get_doc_title(old_clause.doc_code, f"Văn bản {old_clause.doc_code}")
                                 sources.append({
                                     "name": f"{old_clause.clause_id} — {old_clause.path}",
-                                    "description": f"{doc_title}. Tầm ảnh hưởng: {old_clause.visibility.upper()} | Ban: {old_clause.department.upper()}. Trạng thái: Đã hết hiệu lực / Bị thay thế",
+                                    "description": f"{doc_title}. Phạm vi: {_vis_label(old_clause.visibility)} | Ban: {_dept_label(old_clause.department)}. Trạng thái: Đã hết hiệu lực / Bị thay thế",
                                     "body": old_clause.text,
                                     "clause_id": old_clause.clause_id,
                                     "doc_code": old_clause.doc_code,

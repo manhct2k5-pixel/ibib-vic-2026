@@ -12,28 +12,32 @@ function LivingDocView({ doc }: Props) {
   return (
     <section className="living-doc" aria-label="Văn bản hợp nhất còn hiệu lực">
       <div className="living-head">
-        <strong>📋 Bản còn hiệu lực (đã hợp nhất)</strong>
+        <strong>📋 Điều khoản liên quan còn hiệu lực</strong>
       </div>
 
       {doc.clauses.map((c) => (
         <article key={c.clauseId} className="living-clause">
           <div className="living-clause-head">
+            <span className="living-doc">{c.docCode}</span>
             <span className="living-path">{c.path}</span>
-            <span className="living-src">[{c.clauseId}] · hiệu lực {c.effectiveDate}</span>
+            <span className="living-src">hiệu lực {c.effectiveDate}</span>
             <span className="living-badge">Đang hiệu lực</span>
           </div>
           <p className="living-text">{c.text}</p>
 
           {c.provenance.supersedes && (
-            <details className="living-prov">
-              <summary>
-                ⤷ Thay thế {c.provenance.supersedes.clauseId}
+            <div className="living-super">
+              <span className="living-super-label">
+                ⤷ Thay thế bản cũ <b>{c.provenance.supersedes.clauseId}</b>
                 {c.provenance.supersedes.note ? ` — ${c.provenance.supersedes.note}` : ''}
-              </summary>
+              </span>
               <p className="living-old">
-                <em>Bản cũ (đã bãi bỏ):</em> <span className="struck">{c.provenance.supersedes.text}</span>
+                <span className="struck">
+                  {c.provenance.supersedes.text.slice(0, 140)}
+                  {c.provenance.supersedes.text.length > 140 ? '…' : ''}
+                </span>
               </p>
-            </details>
+            </div>
           )}
           {c.provenance.amendedBy.length > 0 && (
             <div className="living-amend">

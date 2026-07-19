@@ -684,10 +684,10 @@ function App() {
             <section className={`response result-response ${error ? 'response-error' : ''}`} aria-live="polite">
               {isLoading ? <div className="result-loading"><span className="result-spinner" />Đang xử lý yêu cầu...</div> : error ? error : (
                 <>
-                  {conflictWarning?.trim() && <div className="conflict-warning"><strong>⚠ Cảnh báo mâu thuẫn</strong><p>{conflictWarning}</p></div>}
                   {intent && intent !== 'content' && <span className={`intent-badge ${intent}`}>{intent === 'version' ? '🕑 Truy vấn phiên bản' : '🔀 Truy vấn thay đổi'}</span>}
-                  {livingDoc && livingDoc.clauses.length > 0 && <LivingDocView doc={livingDoc} />}
                   <FormattedAnswer content={answer} />
+                  {conflictWarning?.trim() && <div className="conflict-warning"><strong>⚠ Cảnh báo mâu thuẫn</strong><p>{conflictWarning}</p></div>}
+                  {livingDoc && livingDoc.clauses.length > 0 && <LivingDocView doc={livingDoc} />}
                   {sources.length > 0 && <details className="source-list"><summary>Nguồn tham khảo <span>{sources.length}</span></summary>{sources.map((source, index) => <SourceCard source={source} key={`${source.clauseId}-${index}`} />)}</details>}
                   {(requestId || latencyMs !== null) && <div className="response-footer">{requestId && <span>Request ID: {requestId}</span>}{requestId && latencyMs !== null && <i />}{latencyMs !== null && <span>{latencyMs.toLocaleString('vi-VN')} ms</span>}</div>}
                 </>
